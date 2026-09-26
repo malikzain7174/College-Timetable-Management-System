@@ -1,0 +1,380 @@
+.subjects-page {
+    padding: 30px;
+    background: #f8fafc;
+    min-height: 100vh;
+}
+
+
+/* =========================
+   HEADER
+========================= */
+
+.subjects-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.subjects-header h1 {
+    margin: 0;
+    font-size: 30px;
+    color: #1e293b;
+}
+
+.subjects-header p {
+    margin-top: 6px;
+    color: #64748b;
+}
+
+
+/* =========================
+   ADD BUTTON
+========================= */
+
+.add-subject-btn {
+    border: none;
+    background: #2563eb;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.add-subject-btn:hover {
+    background: #1d4ed8;
+}
+
+
+/* =========================
+   FORM CARD
+========================= */
+
+.subject-form-card {
+    background: white;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.form-header h2 {
+    margin: 0;
+    color: #1e293b;
+}
+
+.close-btn {
+    border: none;
+    background: #f1f5f9;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+
+/* =========================
+   FORM
+========================= */
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 7px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group select {
+    padding: 11px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 14px;
+    outline: none;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    border-color: #2563eb;
+}
+
+
+/* =========================
+   CHECKBOX
+========================= */
+
+.checkbox-group {
+    justify-content: center;
+}
+
+.checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+}
+
+
+/* =========================
+   FORM ACTIONS
+========================= */
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 25px;
+}
+
+.cancel-btn,
+.save-btn {
+    padding: 11px 20px;
+    border-radius: 7px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.cancel-btn {
+    background: #e2e8f0;
+    color: #334155;
+}
+
+.save-btn {
+    background: #2563eb;
+    color: white;
+}
+
+.save-btn:hover {
+    background: #1d4ed8;
+}
+
+
+/* =========================
+   TOOLBAR
+========================= */
+
+.subjects-toolbar {
+    background: white;
+    padding: 18px;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.search-box {
+    flex: 1;
+}
+
+.search-box input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    outline: none;
+}
+
+.search-box input:focus {
+    border-color: #2563eb;
+}
+
+.subject-count {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.subject-count strong {
+    color: #1e293b;
+}
+
+
+/* =========================
+   TABLE
+========================= */
+
+.subjects-table-card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.table-wrapper {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+thead {
+    background: #f1f5f9;
+}
+
+th {
+    text-align: left;
+    padding: 14px;
+    font-size: 13px;
+    color: #475569;
+    white-space: nowrap;
+}
+
+td {
+    padding: 14px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 14px;
+    color: #334155;
+    white-space: nowrap;
+}
+
+tbody tr:hover {
+    background: #f8fafc;
+}
+
+
+/* =========================
+   BADGES
+========================= */
+
+.badge {
+    display: inline-block;
+    padding: 5px 9px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge.active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge.inactive {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.badge.practical {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge.theory {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+
+/* =========================
+   ACTION BUTTONS
+========================= */
+
+.action-buttons {
+    display: flex;
+    gap: 7px;
+}
+
+.edit-btn,
+.delete-btn {
+    border: none;
+    padding: 7px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.edit-btn {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.delete-btn {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.edit-btn:hover {
+    background: #bfdbfe;
+}
+
+.delete-btn:hover {
+    background: #fecaca;
+}
+
+
+/* =========================
+   LOADING / EMPTY
+========================= */
+
+.loading,
+.empty-state {
+    padding: 60px;
+    text-align: center;
+    color: #64748b;
+}
+
+.empty-state h3 {
+    color: #334155;
+    margin-bottom: 5px;
+}
+
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 768px) {
+
+    .subjects-page {
+        padding: 20px;
+    }
+
+    .subjects-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .subjects-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+}

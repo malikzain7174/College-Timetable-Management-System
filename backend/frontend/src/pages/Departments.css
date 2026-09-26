@@ -1,0 +1,286 @@
+.departments-page {
+    padding: 24px 34px;
+}
+
+
+.departments-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 28px;
+}
+
+
+.departments-header h1 {
+    margin: 0 0 6px;
+    color: #172033;
+    font-size: 34px;
+}
+
+
+.departments-header p {
+    margin: 0;
+    color: #64748b;
+}
+
+
+.add-department-btn,
+.department-form-card .save-btn {
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #ffffff;
+    padding: 12px 18px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+
+.department-error {
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+
+.department-form-card,
+.departments-table-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 26px;
+    margin-bottom: 24px;
+
+    box-shadow:
+        0 8px 24px
+        rgba(15, 23, 42, 0.04);
+}
+
+
+.department-form-card .form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 22px;
+}
+
+
+.department-form-card .form-header h2 {
+    margin: 0;
+}
+
+
+.department-form-card .close-btn {
+    width: 42px;
+    height: 42px;
+
+    border: none;
+    border-radius: 50%;
+
+    font-size: 24px;
+
+    cursor: pointer;
+}
+
+
+.department-form-grid {
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 20px 24px;
+}
+
+
+.department-form-card .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+
+.department-form-card .form-group label {
+    font-weight: 700;
+    color: #243047;
+}
+
+
+.department-form-card input[type="text"] {
+    min-height: 48px;
+
+    padding: 0 14px;
+
+    border:
+        1px solid #cbd5e1;
+
+    border-radius: 8px;
+
+    font-size: 15px;
+}
+
+
+.department-checkbox {
+    justify-content: center;
+}
+
+
+.department-checkbox label {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+
+.department-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+
+.department-form-card .cancel-btn {
+    border: none;
+    border-radius: 8px;
+
+    background: #e2e8f0;
+    color: #334155;
+
+    padding: 12px 18px;
+
+    font-weight: 700;
+
+    cursor: pointer;
+}
+
+
+.departments-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    gap: 16px;
+
+    margin-bottom: 18px;
+}
+
+
+.departments-toolbar input {
+    flex: 1;
+
+    min-height: 44px;
+
+    padding: 0 14px;
+
+    border:
+        1px solid #cbd5e1;
+
+    border-radius: 8px;
+}
+
+
+.department-table-wrapper {
+    overflow-x: auto;
+}
+
+
+.department-table-wrapper table {
+    width: 100%;
+
+    border-collapse: collapse;
+}
+
+
+.department-table-wrapper th,
+.department-table-wrapper td {
+    text-align: left;
+
+    padding: 14px 12px;
+
+    border-bottom:
+        1px solid #e5e7eb;
+}
+
+
+.department-status {
+    display: inline-block;
+
+    padding: 5px 9px;
+
+    border-radius: 999px;
+
+    font-size: 12px;
+    font-weight: 700;
+}
+
+
+.department-status.active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+
+.department-status.inactive {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+
+.department-actions {
+    display: flex;
+    gap: 8px;
+}
+
+
+.department-actions button {
+    border: none;
+
+    border-radius: 6px;
+
+    padding: 8px 12px;
+
+    font-weight: 700;
+
+    cursor: pointer;
+}
+
+
+.department-actions .edit-btn {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+
+.department-actions .delete-btn {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+
+.department-state {
+    padding: 28px;
+
+    text-align: center;
+
+    color: #64748b;
+}
+
+
+@media (max-width: 800px) {
+
+    .department-form-grid {
+        grid-template-columns:
+            1fr;
+    }
+
+
+    .departments-header,
+    .departments-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
