@@ -28,7 +28,7 @@ import SectionSubjects from "./pages/SectionSubjects";
 import TeachingGroups from "./pages/TeachingGroups";
 import Timetable from "./pages/Timetable";
 import Conflicts from "./pages/Conflicts";
-
+import TimetableRules from "./pages/TimetableRules";
 // ==========================================
 // SERVICES
 // ==========================================
@@ -959,6 +959,16 @@ function Sidebar() {
            to="/conflicts">
            ⚠️ Conflicts
         </Link>
+      <Link
+    className={
+        isActive("/timetable-rules")
+            ? "active"
+            : ""
+    }
+    to="/timetable-rules">
+    ⚙️ Timetable Rules
+
+   </Link>
 
       </nav>
 
@@ -1082,6 +1092,12 @@ function App() {
     path="/departments"
     element={
         <Departments />
+    }
+/>
+<Route
+    path="/timetable-rules"
+    element={
+        <TimetableRules />
     }
 />
           </Routes>

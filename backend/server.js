@@ -45,6 +45,7 @@ const conflictRoutes =
 const timetableGeneratorRoutes =
     require("./routes/timetableGeneratorRoutes");
 
+const timetableRuleRoutes = require("./routes/timetableRuleRoutes");
 
 // ======================================================
 // APP
@@ -125,7 +126,10 @@ app.use(
     "/api/timetable-generator",
     timetableGeneratorRoutes
 );
-
+app.use(
+    "/api/timetable-rules",
+    timetableRuleRoutes
+);
 
 // ======================================================
 // ROOT

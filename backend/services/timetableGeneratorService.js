@@ -1,375 +1,205 @@
-const {
-    sql,
-    poolPromise
-} = require("../config/db");
+﻿const { sql, poolPromise } = require("../config/db");
+const timetableRuleService = require("./timetableRuleService");
 
 
 // ======================================================
 // GET GENERATION DATA
 // ======================================================
 
-const getGenerationData =
-    async (
-        academicSessionId
-    ) => {
+const getGenerationData = async (academicSessionId) => {
+    const pool = await poolPromise;
 
-        const pool =
-            await poolPromise;
+    const subjectResult = await pool.request()
+        .input("AcademicSessionId", sql.Int, Number(academicSessionId))
+        .query(`
+            SELECT
+                ss.SectionSubjectId,
+                ss.SectionId,
+                ss.SubjectId,
+                ss.TeacherId,
+                ss.WeeklyHours,
 
+                s.CampusId,
+                s.AcademicSessionId,
+                s.ClassYearId,
+                s.DefaultRoomId,
+                s.SectionCode,
+                s.SectionName,
+                s.StudentCount,
 
-        const subjectResult =
-            await pool.request()
+                sub.SubjectCode,
+                sub.SubjectName,
+                sub.IsPractical,
 
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    Number(
-                        academicSessionId
-                    )
-                )
+                grp.TeachingGroupId
 
-                .query(`
+            FROM SectionSubjects ss
 
-                    SELECT
-                        ss.SectionSubjectId,
-                        ss.SectionId,
-                        ss.SubjectId,
-                        ss.TeacherId,
-                        ss.WeeklyHours,
+            INNER JOIN Sections s
+                ON s.SectionId = ss.SectionId
 
-                        s.CampusId,
-                        s.AcademicSessionId,
-                        s.ClassYearId,
-                        s.DefaultRoomId,
-                        s.SectionCode,
-                        s.SectionName,
-                        s.StudentCount,
+            INNER JOIN Subjects sub
+                ON sub.SubjectId = ss.SubjectId
 
-                        sub.SubjectCode,
-                        sub.SubjectName,
-                        sub.IsPractical,
+            OUTER APPLY
+            (
+                SELECT TOP 1
+                    tgs.TeachingGroupId
 
-                        grp.TeachingGroupId
+                FROM TeachingGroupSections tgs
 
-                    FROM SectionSubjects ss
+                INNER JOIN TeachingGroups tg
+                    ON tg.TeachingGroupId = tgs.TeachingGroupId
 
-                    INNER JOIN Sections s
+                WHERE
+                    tgs.SectionId = ss.SectionId
+                    AND tg.IsActive = 1
+                    AND tg.CampusId = s.CampusId
+                    AND tg.AcademicSessionId = s.AcademicSessionId
+                    AND tg.ClassYearId = s.ClassYearId
 
-                        ON s.SectionId =
-                           ss.SectionId
+                ORDER BY tgs.TeachingGroupId
+            ) grp
 
-                    INNER JOIN Subjects sub
+            WHERE
+                s.AcademicSessionId = @AcademicSessionId
+                AND ss.IsActive = 1
+                AND s.IsActive = 1
 
-                        ON sub.SubjectId =
-                           ss.SubjectId
+            ORDER BY ss.SectionSubjectId;
+        `);
 
-                    OUTER APPLY
-                    (
-                        SELECT TOP 1
-                            tgs.TeachingGroupId
+    const timeSlotResult = await pool.request().query(`
+        SELECT
+            TimeSlotId,
+            DayOfWeek,
+            StartTime,
+            EndTime,
+            SlotName
+        FROM TimeSlots
+        WHERE IsActive = 1
+        ORDER BY DayOfWeek, StartTime;
+    `);
 
-                        FROM TeachingGroupSections tgs
+    const roomResult = await pool.request().query(`
+        SELECT
+            r.RoomId,
+            r.CampusId,
+            r.RoomNumber,
+            r.RoomName,
+            r.RoomType,
+            r.Capacity,
+            r.IsLab,
+            r.IsActive,
 
-                        INNER JOIN TeachingGroups tg
+            assigned.SectionId AS AssignedSectionId,
+            assigned.SectionCode AS AssignedSectionCode
 
-                            ON tg.TeachingGroupId =
-                               tgs.TeachingGroupId
+        FROM Rooms r
 
-                        WHERE
-                            tgs.SectionId =
-                            ss.SectionId
+        OUTER APPLY
+        (
+            SELECT TOP 1
+                s.SectionId,
+                s.SectionCode
+            FROM Sections s
+            WHERE
+                s.DefaultRoomId = r.RoomId
+                AND s.IsActive = 1
+            ORDER BY s.SectionId
+        ) assigned
 
-                            AND
+        WHERE r.IsActive = 1
 
-                            tg.IsActive = 1
+        ORDER BY r.CampusId, r.RoomNumber;
+    `);
 
-                            AND
-
-                            tg.CampusId =
-                            s.CampusId
-
-                            AND
-
-                            tg.AcademicSessionId =
-                            s.AcademicSessionId
-
-                            AND
-
-                            tg.ClassYearId =
-                            s.ClassYearId
-
-                        ORDER BY
-                            tgs.TeachingGroupId
-
-                    ) grp
-
-                    WHERE
-                        s.AcademicSessionId =
-                        @AcademicSessionId
-
-                        AND
-
-                        ss.IsActive = 1
-
-                        AND
-
-                        s.IsActive = 1
-
-                    ORDER BY
-                        ss.SectionSubjectId
-                `);
-
-
-        const timeSlotResult =
-            await pool.request()
-                .query(`
-
-                    SELECT
-                        TimeSlotId,
-                        DayOfWeek,
-                        StartTime,
-                        EndTime,
-                        SlotName
-
-                    FROM TimeSlots
-
-                    WHERE
-                        IsActive = 1
-
-                    ORDER BY
-                        DayOfWeek,
-                        StartTime
-                `);
-
-
-        const roomResult =
-            await pool.request()
-                .query(`
-
-                    SELECT
-                        RoomId,
-                        CampusId,
-                        RoomNumber,
-                        RoomName,
-                        RoomType,
-                        Capacity,
-                        IsLab,
-                        IsActive
-
-                    FROM Rooms
-
-                    WHERE
-                        IsActive = 1
-
-                    ORDER BY
-                        CampusId,
-                        RoomNumber
-                `);
-
-
-        return {
-
-            subjects:
-                subjectResult.recordset,
-
-            timeSlots:
-                timeSlotResult.recordset,
-
-            rooms:
-                roomResult.recordset
-        };
+    return {
+        subjects: subjectResult.recordset,
+        timeSlots: timeSlotResult.recordset,
+        rooms: roomResult.recordset
     };
+};
 
 
 // ======================================================
 // EXISTING ENTRIES
 // ======================================================
 
-const getExistingEntries =
-    async (
-        academicSessionId
-    ) => {
+const getExistingEntries = async (academicSessionId) => {
+    const pool = await poolPromise;
 
-        const pool =
-            await poolPromise;
+    const result = await pool.request()
+        .input("AcademicSessionId", sql.Int, Number(academicSessionId))
+        .query(`
+            SELECT
+                te.TimetableEntryId,
+                te.TeacherId,
+                te.RoomId,
+                te.TimeSlotId,
+                ss.SectionId,
+                ss.SubjectId
+            FROM TimetableEntries te
+            INNER JOIN SectionSubjects ss
+                ON ss.SectionSubjectId = te.SectionSubjectId
+            WHERE te.AcademicSessionId = @AcademicSessionId;
+        `);
 
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    Number(
-                        academicSessionId
-                    )
-                )
-
-                .query(`
-
-                    SELECT
-                        te.TimetableEntryId,
-                        te.TeacherId,
-                        te.RoomId,
-                        te.TimeSlotId,
-
-                        ss.SectionId,
-                        ss.SubjectId
-
-                    FROM TimetableEntries te
-
-                    INNER JOIN SectionSubjects ss
-
-                        ON ss.SectionSubjectId =
-                           te.SectionSubjectId
-
-                    WHERE
-                        te.AcademicSessionId =
-                        @AcademicSessionId
-                `);
-
-
-        return result.recordset;
-    };
+    return result.recordset;
+};
 
 
 // ======================================================
 // CLEAR TIMETABLE
 // ======================================================
 
-const clearTimetable =
-    async (
-        academicSessionId
-    ) => {
+const clearTimetable = async (academicSessionId) => {
+    const pool = await poolPromise;
 
-        const pool =
-            await poolPromise;
+    const result = await pool.request()
+        .input("AcademicSessionId", sql.Int, Number(academicSessionId))
+        .query(`
+            DELETE FROM TimetableEntries
+            WHERE AcademicSessionId = @AcademicSessionId;
+        `);
 
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    Number(
-                        academicSessionId
-                    )
-                )
-
-                .query(`
-
-                    DELETE
-                    FROM TimetableEntries
-
-                    WHERE
-                        AcademicSessionId =
-                        @AcademicSessionId
-                `);
-
-
-        return {
-
-            deletedRows:
-                result.rowsAffected[0] ||
-                0
-        };
+    return {
+        deletedRows: result.rowsAffected[0] || 0
     };
+};
 
 
 // ======================================================
 // CONFLICT HELPERS
 // ======================================================
 
-const hasSectionConflict = (
-    entries,
-    sectionId,
-    timeSlotId
-) => {
-
-    return entries.some(
-        entry =>
-
-            Number(
-                entry.SectionId
-            ) ===
-            Number(
-                sectionId
-            )
-
-            &&
-
-            Number(
-                entry.TimeSlotId
-            ) ===
-            Number(
-                timeSlotId
-            )
+const hasSectionConflict = (entries, sectionId, timeSlotId) => {
+    return entries.some(entry =>
+        Number(entry.SectionId) === Number(sectionId) &&
+        Number(entry.TimeSlotId) === Number(timeSlotId)
     );
 };
 
 
-const hasTeacherConflict = (
-    entries,
-    teacherId,
-    timeSlotId
-) => {
-
-    return entries.some(
-        entry =>
-
-            Number(
-                entry.TeacherId
-            ) ===
-            Number(
-                teacherId
-            )
-
-            &&
-
-            Number(
-                entry.TimeSlotId
-            ) ===
-            Number(
-                timeSlotId
-            )
+const hasTeacherConflict = (entries, teacherId, timeSlotId) => {
+    return entries.some(entry =>
+        Number(entry.TeacherId) === Number(teacherId) &&
+        Number(entry.TimeSlotId) === Number(timeSlotId)
     );
 };
 
 
-const hasRoomConflict = (
-    entries,
-    roomId,
-    timeSlotId
-) => {
-
-    return entries.some(
-        entry =>
-
-            Number(
-                entry.RoomId
-            ) ===
-            Number(
-                roomId
-            )
-
-            &&
-
-            Number(
-                entry.TimeSlotId
-            ) ===
-            Number(
-                timeSlotId
-            )
+const hasRoomConflict = (entries, roomId, timeSlotId) => {
+    return entries.some(entry =>
+        Number(entry.RoomId) === Number(roomId) &&
+        Number(entry.TimeSlotId) === Number(timeSlotId)
     );
 };
 
 
 // ======================================================
 // TEACHER DAILY LOAD
-//
-// Max 5 lecture slots per day.
-// Common lecture has several DB rows but is ONE slot.
+// Common lecture counts only once because unique slots are used.
 // ======================================================
 
 const getTeacherDailyLectureCount = (
@@ -378,72 +208,26 @@ const getTeacherDailyLectureCount = (
     dayOfWeek,
     timeSlots
 ) => {
+    const slotDays = new Map(
+        timeSlots.map(slot => [
+            Number(slot.TimeSlotId),
+            Number(slot.DayOfWeek)
+        ])
+    );
 
-    const slotDays =
-        new Map(
+    const uniqueSlots = new Set();
 
-            timeSlots.map(
-                slot => [
-
-                    Number(
-                        slot.TimeSlotId
-                    ),
-
-                    Number(
-                        slot.DayOfWeek
-                    )
-                ]
-            )
-        );
-
-
-    const uniqueSlots =
-        new Set();
-
-
-    for (
-        const entry
-        of entries
-    ) {
-
-        if (
-            Number(
-                entry.TeacherId
-            ) !==
-            Number(
-                teacherId
-            )
-        ) {
-
+    for (const entry of entries) {
+        if (Number(entry.TeacherId) !== Number(teacherId)) {
             continue;
         }
 
+        const entryDay = slotDays.get(Number(entry.TimeSlotId));
 
-        const entryDay =
-            slotDays.get(
-
-                Number(
-                    entry.TimeSlotId
-                )
-            );
-
-
-        if (
-            entryDay ===
-            Number(
-                dayOfWeek
-            )
-        ) {
-
-            uniqueSlots.add(
-
-                Number(
-                    entry.TimeSlotId
-                )
-            );
+        if (entryDay === Number(dayOfWeek)) {
+            uniqueSlots.add(Number(entry.TimeSlotId));
         }
     }
-
 
     return uniqueSlots.size;
 };
@@ -453,449 +237,676 @@ const getTeacherDailyLectureCount = (
 // PRACTICAL / LAB
 // ======================================================
 
-const requiresLab =
-    row => {
+const requiresLab = row => {
+    if (row.IsPractical) {
+        return true;
+    }
 
-        if (
-            row.IsPractical
-        ) {
+    const text = `${row.SubjectCode || ""} ${row.SubjectName || ""}`
+        .toLowerCase();
 
-            return true;
-        }
-
-
-        const text =
-            `${row.SubjectCode || ""} ${row.SubjectName || ""}`
-                .toLowerCase();
-
-
-        return (
-
-            text.includes(
-                "lab"
-            )
-
-            ||
-
-            text.includes(
-                "computer"
-            )
-        );
-    };
+    return text.includes("lab") || text.includes("computer");
+};
 
 
 // ======================================================
-// DISTINCT TASK SECTION ROWS
+// PARALLEL BIOLOGY + MATHEMATICS HELPERS
 // ======================================================
 
-const getDistinctTaskRows =
-    task => {
+const isBiologySubject = row => {
+    const code = String(row.SubjectCode || "").trim().toUpperCase();
+    const name = String(row.SubjectName || "").trim().toLowerCase();
 
-        return [
+    return code === "BIO101" || name.includes("biology");
+};
 
-            ...new Map(
 
-                task.rows.map(
-                    row => [
+const isMathematicsSubject = row => {
+    const code = String(row.SubjectCode || "").trim().toUpperCase();
+    const name = String(row.SubjectName || "").trim().toLowerCase();
 
-                        Number(
-                            row.SectionId
-                        ),
+    return (
+        code === "MAT101" ||
+        name.includes("mathematics") ||
+        name === "math" ||
+        name === "maths"
+    );
+};
 
-                        row
-                    ]
-                )
 
-            ).values()
-        ];
-    };
+const isPreMedicalSection = row => {
+    const text = `${row.SectionCode || ""} ${row.SectionName || ""}`
+        .toUpperCase();
+
+    return (
+        text.includes("-PM-") ||
+        text.includes("PRE-MED") ||
+        text.includes("PRE MED")
+    );
+};
+
+
+const isPreEngineeringSection = row => {
+    const text = `${row.SectionCode || ""} ${row.SectionName || ""}`
+        .toUpperCase();
+
+    return (
+        text.includes("-PE-") ||
+        text.includes("PRE-ENG") ||
+        text.includes("PRE ENG")
+    );
+};
+
+
+// ======================================================
+// DISTINCT TASK ROWS
+// ======================================================
+
+const getDistinctTaskRows = task => {
+    return [
+        ...new Map(
+            task.rows.map(row => [Number(row.SectionId), row])
+        ).values()
+    ];
+};
 
 
 // ======================================================
 // TASK CAPACITY
 // ======================================================
 
-const getTaskCapacity =
-    task => {
+const getTaskCapacity = task => {
+    const distinctRows = getDistinctTaskRows(task);
 
-        const distinctRows =
-            getDistinctTaskRows(
-                task
-            );
-
-
-        if (
-            task.type ===
-            "Common"
-        ) {
-
-            return distinctRows.reduce(
-                (
-                    total,
-                    row
-                ) =>
-
-                    total +
-                    Number(
-                        row.StudentCount ||
-                        0
-                    ),
-
-                0
-            );
-        }
-
-
-        return Number(
-            distinctRows[0]
-                ?.StudentCount ||
+    if (task.type === "Common") {
+        return distinctRows.reduce(
+            (total, row) => total + Number(row.StudentCount || 0),
             0
         );
+    }
+
+    return Number(distinctRows[0]?.StudentCount || 0);
+};
+
+
+// ======================================================
+// CONFIGURABLE RULE ENGINE HELPERS
+// ======================================================
+
+const getPeriodNumber = (slot, timeSlots) => {
+    const daySlots = timeSlots
+        .filter(
+            item =>
+                Number(item.DayOfWeek) ===
+                Number(slot.DayOfWeek)
+        )
+        .sort(
+            (a, b) =>
+                String(a.StartTime || "").localeCompare(
+                    String(b.StartTime || "")
+                )
+        );
+
+    const index = daySlots.findIndex(
+        item =>
+            Number(item.TimeSlotId) ===
+            Number(slot.TimeSlotId)
+    );
+
+    return index >= 0 ? index + 1 : null;
+};
+
+
+// ======================================================
+// COUNT SAME SUBJECT FOR SECTION ON A DAY
+// ======================================================
+
+const countSubjectOnDay = ({
+    entries,
+    sectionId,
+    subjectId,
+    dayOfWeek,
+    timeSlots
+}) => {
+    const slotDayMap = new Map(
+        timeSlots.map(slot => [
+            Number(slot.TimeSlotId),
+            Number(slot.DayOfWeek)
+        ])
+    );
+
+    return entries.filter(entry =>
+        Number(entry.SectionId) === Number(sectionId) &&
+        Number(entry.SubjectId) === Number(subjectId) &&
+        slotDayMap.get(Number(entry.TimeSlotId)) === Number(dayOfWeek)
+    ).length;
+};
+
+
+// ======================================================
+// APPLY CONFIGURABLE FRONTEND RULES
+// ======================================================
+
+const passesConfigurableRules = ({
+    row,
+    teacherId,
+    subjectId,
+    sectionId,
+    slot,
+    allEntries,
+    timeSlots,
+    rules
+}) => {
+    const context = {
+        teacherId: Number(teacherId),
+        subjectId: Number(subjectId),
+        sectionId: Number(sectionId),
+        campusId: Number(row.CampusId),
+        classYearId: Number(row.ClassYearId)
     };
+
+    const period = getPeriodNumber(slot, timeSlots);
+
+
+    // --------------------------------------------------
+    // TEACHER DAILY MAX
+    // --------------------------------------------------
+
+    const dailyMaxRule = timetableRuleService.getBestRule(
+        rules,
+        "TEACHER_DAILY_MAX",
+        context
+    );
+
+    if (dailyMaxRule) {
+        const maxLectures = Number(
+            dailyMaxRule.RuleValueObject?.maxLectures
+        );
+
+        if (
+            Number.isFinite(maxLectures) &&
+            maxLectures > 0 &&
+            getTeacherDailyLectureCount(
+                allEntries,
+                teacherId,
+                slot.DayOfWeek,
+                timeSlots
+            ) >= maxLectures
+        ) {
+            return false;
+        }
+    }
+
+
+    // --------------------------------------------------
+    // TEACHER MINIMUM START PERIOD
+    // Example: minimumPeriod = 3 means P1/P2 blocked.
+    // --------------------------------------------------
+
+    const minStartRule = timetableRuleService.getBestRule(
+        rules,
+        "TEACHER_MIN_START_PERIOD",
+        context
+    );
+
+    if (minStartRule) {
+        const minimumPeriod = Number(
+            minStartRule.RuleValueObject?.minimumPeriod
+        );
+
+        if (
+            Number.isFinite(minimumPeriod) &&
+            period !== null &&
+            period < minimumPeriod
+        ) {
+            return false;
+        }
+    }
+
+
+    // --------------------------------------------------
+    // TEACHER MAXIMUM END PERIOD
+    // --------------------------------------------------
+
+    const maxEndRule = timetableRuleService.getBestRule(
+        rules,
+        "TEACHER_MAX_END_PERIOD",
+        context
+    );
+
+    if (maxEndRule) {
+        const maximumPeriod = Number(
+            maxEndRule.RuleValueObject?.maximumPeriod
+        );
+
+        if (
+            Number.isFinite(maximumPeriod) &&
+            period !== null &&
+            period > maximumPeriod
+        ) {
+            return false;
+        }
+    }
+
+
+    // --------------------------------------------------
+    // TEACHER BLOCK DAY
+    // --------------------------------------------------
+
+    const blockedDayRules = timetableRuleService.getMatchingRules(
+        rules,
+        "TEACHER_BLOCK_DAY",
+        context
+    );
+
+    if (
+        blockedDayRules.some(
+            rule =>
+                Number(rule.RuleValueObject?.dayOfWeek) ===
+                Number(slot.DayOfWeek)
+        )
+    ) {
+        return false;
+    }
+
+
+    // --------------------------------------------------
+    // TEACHER BLOCK PERIOD
+    // --------------------------------------------------
+
+    const blockedTeacherPeriodRules =
+        timetableRuleService.getMatchingRules(
+            rules,
+            "TEACHER_BLOCK_PERIOD",
+            context
+        );
+
+    if (
+        blockedTeacherPeriodRules.some(
+            rule =>
+                Number(rule.RuleValueObject?.period) ===
+                Number(period)
+        )
+    ) {
+        return false;
+    }
+
+
+    // --------------------------------------------------
+    // SECTION BLOCK PERIOD
+    // --------------------------------------------------
+
+    const blockedSectionPeriodRules =
+        timetableRuleService.getMatchingRules(
+            rules,
+            "SECTION_BLOCK_PERIOD",
+            context
+        );
+
+    if (
+        blockedSectionPeriodRules.some(
+            rule =>
+                Number(rule.RuleValueObject?.period) ===
+                Number(period)
+        )
+    ) {
+        return false;
+    }
+
+
+    // --------------------------------------------------
+    // SUBJECT MAXIMUM PER DAY
+    // --------------------------------------------------
+
+    const subjectMaxRule = timetableRuleService.getBestRule(
+        rules,
+        "SUBJECT_MAX_PER_DAY",
+        context
+    );
+
+    if (subjectMaxRule) {
+        const maxPerDay = Number(
+            subjectMaxRule.RuleValueObject?.maxPerDay
+        );
+
+        if (
+            Number.isFinite(maxPerDay) &&
+            maxPerDay > 0
+        ) {
+            const existingCount = countSubjectOnDay({
+                entries: allEntries,
+                sectionId,
+                subjectId,
+                dayOfWeek: slot.DayOfWeek,
+                timeSlots
+            });
+
+            if (existingCount >= maxPerDay) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+};
 
 
 // ======================================================
 // BUILD TASKS
 // ======================================================
 
-const buildTasks =
-    subjects => {
+const buildTasks = (subjects, rules = []) => {
+    const tasks = [];
+    const consumed = new Set();
+    const remainingHours = new Map();
 
-        const tasks =
-            [];
-
-
-        const consumed =
-            new Set();
-
-
-        const groups =
-            new Map();
+    for (const row of subjects) {
+        remainingHours.set(
+            Number(row.SectionSubjectId),
+            Number(row.WeeklyHours) || 0
+        );
+    }
 
 
-        // ==============================================
-        // COLLECT ROWS BY TEACHING GROUP
-        // ==============================================
+    // --------------------------------------------------
+    // IS PARALLEL BIO/MATH RULE ENABLED?
+    // --------------------------------------------------
 
-        for (
-            const row
-            of subjects
-        ) {
+    const bioMathEnabled = Boolean(
+        timetableRuleService.getBestRule(
+            rules,
+            "BIO_MATH_PARALLEL",
+            {}
+        )
+    );
 
-            if (
-                !row.TeachingGroupId
-            ) {
 
+    // --------------------------------------------------
+    // PARALLEL BIOLOGY + MATHEMATICS
+    // --------------------------------------------------
+
+    if (bioMathEnabled) {
+        const academicGroups = new Map();
+
+        for (const row of subjects) {
+            const key =
+                `${Number(row.CampusId)}|${Number(row.ClassYearId)}`;
+
+            if (!academicGroups.has(key)) {
+                academicGroups.set(key, []);
+            }
+
+            academicGroups.get(key).push(row);
+        }
+
+        for (const rows of academicGroups.values()) {
+            const biologyRow = rows.find(
+                row =>
+                    isPreMedicalSection(row) &&
+                    isBiologySubject(row)
+            );
+
+            const mathematicsRow = rows.find(
+                row =>
+                    isPreEngineeringSection(row) &&
+                    isMathematicsSubject(row)
+            );
+
+            if (!biologyRow || !mathematicsRow) {
                 continue;
             }
 
-
-            const groupId =
+            const biologyHours =
                 Number(
-                    row.TeachingGroupId
-                );
-
-
-            if (
-                !groups.has(
-                    groupId
-                )
-            ) {
-
-                groups.set(
-                    groupId,
-                    []
-                );
-            }
-
-
-            groups
-                .get(
-                    groupId
-                )
-                .push(
-                    row
-                );
-        }
-
-
-        // ==============================================
-        // BUILD COMMON SUBJECT TASKS
-        // ==============================================
-
-        for (
-            const [
-                teachingGroupId,
-                rows
-            ]
-            of groups
-        ) {
-
-            const groupSectionIds =
-                [
-
-                    ...new Set(
-
-                        rows.map(
-                            row =>
-                                Number(
-                                    row.SectionId
-                                )
-                        )
+                    remainingHours.get(
+                        Number(biologyRow.SectionSubjectId)
                     )
-                ];
+                ) || 0;
 
-
-            const bySubject =
-                new Map();
-
-
-            for (
-                const row
-                of rows
-            ) {
-
-                const subjectId =
-                    Number(
-                        row.SubjectId
-                    );
-
-
-                if (
-                    !bySubject.has(
-                        subjectId
+            const mathematicsHours =
+                Number(
+                    remainingHours.get(
+                        Number(mathematicsRow.SectionSubjectId)
                     )
-                ) {
+                ) || 0;
 
-                    bySubject.set(
-                        subjectId,
-                        []
-                    );
-                }
+            const pairedHours = Math.min(
+                biologyHours,
+                mathematicsHours
+            );
 
-
-                bySubject
-                    .get(
-                        subjectId
-                    )
-                    .push(
-                        row
-                    );
-            }
-
-
-            for (
-                const [
-                    subjectId,
-                    subjectRows
-                ]
-                of bySubject
-            ) {
-
-                const subjectSectionIds =
-                    [
-
-                        ...new Set(
-
-                            subjectRows.map(
-                                row =>
-                                    Number(
-                                        row.SectionId
-                                    )
-                            )
-                        )
-                    ];
-
-
-                // Subject must exist in all group members.
-                if (
-                    subjectSectionIds.length !==
-                    groupSectionIds.length
-                ) {
-
-                    continue;
-                }
-
-
-                if (
-                    subjectRows.length <
-                    2
-                ) {
-
-                    continue;
-                }
-
-
-                const teacherIds =
-                    [
-
-                        ...new Set(
-
-                            subjectRows.map(
-                                row =>
-                                    Number(
-                                        row.TeacherId
-                                    )
-                            )
-                        )
-                    ];
-
-
-                const weeklyHours =
-                    [
-
-                        ...new Set(
-
-                            subjectRows.map(
-                                row =>
-                                    Number(
-                                        row.WeeklyHours
-                                    )
-                            )
-                        )
-                    ];
-
-
-                // Same common class only if
-                // teacher and weekly hours match.
-                if (
-                    teacherIds.length !== 1
-
-                    ||
-
-                    weeklyHours.length !== 1
-                ) {
-
-                    continue;
-                }
-
-
-                tasks.push({
-
-                    type:
-                        "Common",
-
-                    teachingGroupId,
-
-                    subjectId,
-
-                    rows:
-                        subjectRows,
-
-                    teacherId:
-                        teacherIds[0],
-
-                    requiredHours:
-                        weeklyHours[0]
-                });
-
-
-                subjectRows.forEach(
-                    row =>
-
-                        consumed.add(
-
-                            Number(
-                                row.SectionSubjectId
-                            )
-                        )
-                );
-            }
-        }
-
-
-        // ==============================================
-        // REGULAR TASKS
-        // ==============================================
-
-        for (
-            const row
-            of subjects
-        ) {
-
-            if (
-                consumed.has(
-
-                    Number(
-                        row.SectionSubjectId
-                    )
-                )
-            ) {
-
+            if (pairedHours <= 0) {
                 continue;
             }
-
 
             tasks.push({
-
-                type:
-                    "Regular",
+                type: "ParallelBioMath",
 
                 teachingGroupId:
-                    row.TeachingGroupId ||
+                    biologyRow.TeachingGroupId ||
+                    mathematicsRow.TeachingGroupId ||
                     null,
 
-                subjectId:
-                    Number(
-                        row.SubjectId
-                    ),
+                subjectId: null,
 
-                rows:
-                    [row],
+                rows: [
+                    biologyRow,
+                    mathematicsRow
+                ],
 
-                teacherId:
-                    Number(
-                        row.TeacherId
-                    ),
+                biologyRow,
+                mathematicsRow,
 
-                requiredHours:
-                    Number(
-                        row.WeeklyHours
-                    ) ||
-                    0
+                requiredHours: pairedHours
             });
+
+            remainingHours.set(
+                Number(biologyRow.SectionSubjectId),
+                biologyHours - pairedHours
+            );
+
+            remainingHours.set(
+                Number(mathematicsRow.SectionSubjectId),
+                mathematicsHours - pairedHours
+            );
+        }
+    }
+
+
+    // --------------------------------------------------
+    // COMMON TEACHING GROUPS
+    // --------------------------------------------------
+
+    const groups = new Map();
+
+    for (const row of subjects) {
+        if (!row.TeachingGroupId) {
+            continue;
         }
 
+        const left =
+            Number(
+                remainingHours.get(
+                    Number(row.SectionSubjectId)
+                )
+            ) || 0;
 
-        // Common first.
-        tasks.sort(
-            (
-                a,
-                b
-            ) => {
+        if (left <= 0) {
+            continue;
+        }
 
-                if (
-                    a.type !==
-                    b.type
-                ) {
+        const groupId = Number(row.TeachingGroupId);
 
-                    return (
-                        a.type ===
-                        "Common"
+        if (!groups.has(groupId)) {
+            groups.set(groupId, []);
+        }
 
-                            ? -1
+        groups.get(groupId).push({
+            ...row,
+            WeeklyHours: left
+        });
+    }
 
-                            : 1
-                    );
-                }
+    for (const [teachingGroupId, rows] of groups) {
+        const groupSectionIds = [
+            ...new Set(
+                rows.map(row => Number(row.SectionId))
+            )
+        ];
 
+        const bySubject = new Map();
 
-                return (
+        for (const row of rows) {
+            const subjectId = Number(row.SubjectId);
 
-                    b.requiredHours -
+            if (!bySubject.has(subjectId)) {
+                bySubject.set(subjectId, []);
+            }
 
-                    a.requiredHours
+            bySubject.get(subjectId).push(row);
+        }
+
+        for (const [subjectId, subjectRows] of bySubject) {
+            const subjectSections = [
+                ...new Set(
+                    subjectRows.map(
+                        row => Number(row.SectionId)
+                    )
+                )
+            ];
+
+            if (
+                subjectSections.length !==
+                groupSectionIds.length
+            ) {
+                continue;
+            }
+
+            if (subjectRows.length < 2) {
+                continue;
+            }
+
+            const teacherIds = [
+                ...new Set(
+                    subjectRows.map(
+                        row => Number(row.TeacherId)
+                    )
+                )
+            ];
+
+            const weeklyHours = [
+                ...new Set(
+                    subjectRows.map(
+                        row => Number(row.WeeklyHours)
+                    )
+                )
+            ];
+
+            if (
+                teacherIds.length !== 1 ||
+                weeklyHours.length !== 1
+            ) {
+                continue;
+            }
+
+            tasks.push({
+                type: "Common",
+                teachingGroupId,
+                subjectId,
+                rows: subjectRows,
+                teacherId: teacherIds[0],
+                requiredHours: weeklyHours[0]
+            });
+
+            for (const row of subjectRows) {
+                consumed.add(
+                    Number(row.SectionSubjectId)
+                );
+
+                remainingHours.set(
+                    Number(row.SectionSubjectId),
+                    0
                 );
             }
-        );
+        }
+    }
 
 
-        return tasks;
+    // --------------------------------------------------
+    // REGULAR TASKS
+    // --------------------------------------------------
+
+    for (const row of subjects) {
+        if (
+            consumed.has(
+                Number(row.SectionSubjectId)
+            )
+        ) {
+            continue;
+        }
+
+        const hours =
+            Number(
+                remainingHours.get(
+                    Number(row.SectionSubjectId)
+                )
+            ) || 0;
+
+        if (hours <= 0) {
+            continue;
+        }
+
+        tasks.push({
+            type: "Regular",
+
+            teachingGroupId:
+                row.TeachingGroupId || null,
+
+            subjectId:
+                Number(row.SubjectId),
+
+            rows: [row],
+
+            teacherId:
+                Number(row.TeacherId),
+
+            requiredHours:
+                hours
+        });
+    }
+
+
+    // --------------------------------------------------
+    // PRIORITY
+    // --------------------------------------------------
+
+    const priority = {
+        ParallelBioMath: 1,
+        Common: 2,
+        Regular: 3
     };
+
+    tasks.sort((a, b) => {
+        const difference =
+            (priority[a.type] || 99) -
+            (priority[b.type] || 99);
+
+        if (difference !== 0) {
+            return difference;
+        }
+
+        return (
+            Number(b.requiredHours) -
+            Number(a.requiredHours)
+        );
+    });
+
+    return tasks;
+};
 
 
 // ======================================================
-// FIND ROOM
+// ROOM FINDER FOR NORMAL / COMMON TASKS
 // ======================================================
 
 const findRoomForTask = (
@@ -904,1432 +915,287 @@ const findRoomForTask = (
     task,
     timeSlotId
 ) => {
-
     const distinctRows =
-        getDistinctTaskRows(
-            task
-        );
-
+        getDistinctTaskRows(task);
 
     const campusId =
-        Number(
-            distinctRows[0]
-                .CampusId
-        );
-
+        Number(distinctRows[0].CampusId);
 
     const requiredCapacity =
-        getTaskCapacity(
-            task
-        );
-
+        getTaskCapacity(task);
 
     const needsLab =
-        distinctRows.some(
-            requiresLab
-        );
+        distinctRows.some(requiresLab);
 
 
-    // ==================================================
+    // --------------------------------------------------
     // REGULAR THEORY
-    //
-    // Always use assigned home classroom.
-    // ==================================================
+    // --------------------------------------------------
 
     if (
-        task.type ===
-        "Regular"
-
-        &&
-
+        task.type === "Regular" &&
         !needsLab
     ) {
-
         const assignedRoomId =
             Number(
-                distinctRows[0]
-                    .DefaultRoomId
+                distinctRows[0].DefaultRoomId
             );
-
 
         if (!assignedRoomId) {
-
             return null;
         }
 
-
-        const room =
-            rooms.find(
-                item =>
-
-                    Number(
-                        item.RoomId
-                    ) ===
-                    assignedRoomId
-            );
-
+        const room = rooms.find(
+            item =>
+                Number(item.RoomId) ===
+                assignedRoomId
+        );
 
         if (!room) {
-
             return null;
         }
 
-
         if (
-            Number(
-                room.CampusId
-            ) !==
+            Number(room.CampusId) !==
             campusId
         ) {
-
             return null;
         }
 
-
         if (
-            Number(
-                room.Capacity
-            ) <
+            Number(room.Capacity) <
             requiredCapacity
         ) {
-
             return null;
         }
 
-
-        // If Medical and Engineering share room,
-        // separate lectures cannot occur at same time.
         if (
             hasRoomConflict(
-
                 existingEntries,
-
                 room.RoomId,
-
                 timeSlotId
             )
         ) {
-
             return null;
         }
-
 
         return room;
     }
 
 
-    // ==================================================
+    // --------------------------------------------------
     // REGULAR PRACTICAL
-    //
-    // Assigned room if it is a lab.
-    // Otherwise find free lab.
-    // ==================================================
+    // --------------------------------------------------
 
     if (
-        task.type ===
-        "Regular"
-
-        &&
-
+        task.type === "Regular" &&
         needsLab
     ) {
-
         const assignedRoomId =
             Number(
-                distinctRows[0]
-                    .DefaultRoomId
+                distinctRows[0].DefaultRoomId
             );
 
-
-        const assignedRoom =
-            rooms.find(
-                item =>
-
-                    Number(
-                        item.RoomId
-                    ) ===
-                    assignedRoomId
-            );
-
+        const assignedRoom = rooms.find(
+            item =>
+                Number(item.RoomId) ===
+                assignedRoomId
+        );
 
         if (
-            assignedRoom
-
-            &&
-
-            assignedRoom.IsLab
-
-            &&
-
-            Number(
-                assignedRoom.CampusId
-            ) ===
-            campusId
-
-            &&
-
-            Number(
-                assignedRoom.Capacity
-            ) >=
-            requiredCapacity
-
-            &&
-
+            assignedRoom &&
+            assignedRoom.IsLab &&
+            Number(assignedRoom.CampusId) === campusId &&
+            Number(assignedRoom.Capacity) >= requiredCapacity &&
             !hasRoomConflict(
-
                 existingEntries,
-
                 assignedRoom.RoomId,
-
                 timeSlotId
             )
         ) {
-
             return assignedRoom;
         }
 
-
         return (
-
             rooms.find(
-                room => {
-
-                    if (
-                        Number(
-                            room.CampusId
-                        ) !==
-                        campusId
-                    ) {
-
-                        return false;
-                    }
-
-
-                    if (!room.IsLab) {
-
-                        return false;
-                    }
-
-
-                    if (
-                        Number(
-                            room.Capacity
-                        ) <
-                        requiredCapacity
-                    ) {
-
-                        return false;
-                    }
-
-
-                    if (
-                        hasRoomConflict(
-
-                            existingEntries,
-
-                            room.RoomId,
-
-                            timeSlotId
-                        )
-                    ) {
-
-                        return false;
-                    }
-
-
-                    return true;
-                }
-            )
-
-            ||
-
-            null
+                room =>
+                    Number(room.CampusId) === campusId &&
+                    room.IsLab &&
+                    Number(room.Capacity) >= requiredCapacity &&
+                    !hasRoomConflict(
+                        existingEntries,
+                        room.RoomId,
+                        timeSlotId
+                    )
+            ) || null
         );
     }
 
 
-    // ==================================================
+    // --------------------------------------------------
     // COMMON / TEACHING GROUP
-    //
-    // Medical + Engineering scenario:
-    //
-    // If every participating section has SAME
-    // DefaultRoomId, that room is compulsory.
-    // ==================================================
+    // --------------------------------------------------
 
-    const assignedRoomIds =
-        [
+    const assignedRoomIds = [
+        ...new Set(
+            distinctRows
+                .map(row => Number(row.DefaultRoomId))
+                .filter(
+                    roomId =>
+                        Number.isInteger(roomId) &&
+                        roomId > 0
+                )
+        )
+    ];
 
-            ...new Set(
-
-                distinctRows
-
-                    .map(
-                        row =>
-                            Number(
-                                row.DefaultRoomId
-                            )
-                    )
-
-                    .filter(
-                        roomId =>
-
-                            Number.isInteger(
-                                roomId
-                            )
-
-                            &&
-
-                            roomId > 0
-                    )
-            )
-        ];
-
-
-    // ==================================================
-    // SAME PHYSICAL CLASSROOM
-    // ==================================================
-
-    if (
-        assignedRoomIds.length ===
-        1
-    ) {
-
-        const sharedRoom =
-            rooms.find(
-                room =>
-
-                    Number(
-                        room.RoomId
-                    ) ===
-                    assignedRoomIds[0]
-            );
-
-
-        if (!sharedRoom) {
-
-            return null;
-        }
-
+    if (assignedRoomIds.length === 1) {
+        const sharedRoom = rooms.find(
+            room =>
+                Number(room.RoomId) ===
+                assignedRoomIds[0]
+        );
 
         if (
-            Number(
-                sharedRoom.CampusId
-            ) !==
-            campusId
+            sharedRoom &&
+            Number(sharedRoom.CampusId) === campusId &&
+            Number(sharedRoom.Capacity) >= requiredCapacity
         ) {
-
-            return null;
-        }
-
-
-        if (
-            Number(
-                sharedRoom.Capacity
-            ) <
-            requiredCapacity
-        ) {
-
-            return null;
-        }
-
-
-        // Common theory:
-        // must remain in shared classroom.
-        if (!needsLab) {
-
             if (
-                hasRoomConflict(
-
+                !needsLab &&
+                !hasRoomConflict(
                     existingEntries,
-
                     sharedRoom.RoomId,
-
                     timeSlotId
                 )
             ) {
-
-                return null;
+                return sharedRoom;
             }
 
-
-            return sharedRoom;
+            if (
+                needsLab &&
+                sharedRoom.IsLab &&
+                !hasRoomConflict(
+                    existingEntries,
+                    sharedRoom.RoomId,
+                    timeSlotId
+                )
+            ) {
+                return sharedRoom;
+            }
         }
-
-
-        // Common practical:
-        // same assigned room only if lab.
-        if (
-            sharedRoom.IsLab
-
-            &&
-
-            !hasRoomConflict(
-
-                existingEntries,
-
-                sharedRoom.RoomId,
-
-                timeSlotId
-            )
-        ) {
-
-            return sharedRoom;
-        }
-
-
-        // Practical can go to lab.
-        return (
-
-            rooms.find(
-                room =>
-
-                    Number(
-                        room.CampusId
-                    ) ===
-                    campusId
-
-                    &&
-
-                    room.IsLab
-
-                    &&
-
-                    Number(
-                        room.Capacity
-                    ) >=
-                    requiredCapacity
-
-                    &&
-
-                    !hasRoomConflict(
-
-                        existingEntries,
-
-                        room.RoomId,
-
-                        timeSlotId
-                    )
-            )
-
-            ||
-
-            null
-        );
     }
 
-
-    // ==================================================
-    // GROUP MEMBERS HAVE DIFFERENT HOME ROOMS
-    //
-    // This means they share only some common lectures,
-    // but are not configured as one physical classroom.
-    //
-    // Find a suitable common room.
-    // ==================================================
-
     return (
-
-        rooms.find(
-            room => {
-
-                if (
-                    Number(
-                        room.CampusId
-                    ) !==
-                    campusId
-                ) {
-
-                    return false;
-                }
-
-
-                if (
-                    Number(
-                        room.Capacity
-                    ) <
-                    requiredCapacity
-                ) {
-
-                    return false;
-                }
-
-
-                if (
-                    needsLab &&
-                    !room.IsLab
-                ) {
-
-                    return false;
-                }
-
-
-                if (
-                    hasRoomConflict(
-
-                        existingEntries,
-
-                        room.RoomId,
-
-                        timeSlotId
-                    )
-                ) {
-
-                    return false;
-                }
-
-
-                return true;
+        rooms.find(room => {
+            if (
+                Number(room.CampusId) !== campusId
+            ) {
+                return false;
             }
-        )
 
-        ||
+            if (
+                Number(room.Capacity) <
+                requiredCapacity
+            ) {
+                return false;
+            }
 
-        null
+            if (
+                needsLab &&
+                !room.IsLab
+            ) {
+                return false;
+            }
+
+            if (
+                hasRoomConflict(
+                    existingEntries,
+                    room.RoomId,
+                    timeSlotId
+                )
+            ) {
+                return false;
+            }
+
+            return true;
+        }) || null
     );
 };
 
 
 // ======================================================
-// SCHEDULE TASK
+// FREE ROOM FINDER FOR PARALLEL MATHEMATICS
+//
+// Conditions:
+// - same campus
+// - not allotted as DefaultRoom to active section
+// - capacity enough
+// - not Biology room
+// - free in exact TimeSlot
 // ======================================================
 
-const scheduleTask = ({
-
-    task,
-    timeSlots,
+const findFreeArrangementRoom = ({
     rooms,
-    reservedEntries,
-    generatedEntries,
-    academicSessionId
-
+    allEntries,
+    mathematicsRow,
+    biologyRoomId,
+    timeSlotId
 }) => {
+    const campusId =
+        Number(mathematicsRow.CampusId);
 
-    const usedDays =
-        new Set();
+    const studentCount =
+        Number(
+            mathematicsRow.StudentCount || 0
+        );
 
-
-    let scheduled =
-        0;
-
-
-    const trySlot = (
-        slot,
-        enforceDifferentDay
-    ) => {
-
-        if (
-            scheduled >=
-            task.requiredHours
-        ) {
-
-            return false;
-        }
-
-
-        const dayOfWeek =
-            Number(
-                slot.DayOfWeek
-            );
-
-
-        if (
-            enforceDifferentDay
-
-            &&
-
-            usedDays.has(
-                dayOfWeek
-            )
-        ) {
-
-            return false;
-        }
-
-
-        const allEntries =
-            [
-
-                ...reservedEntries,
-
-                ...generatedEntries
-            ];
-
-
-        // ==================================================
-        // SECTION CONFLICT
-        // ==================================================
-
-        for (
-            const row
-            of getDistinctTaskRows(
-                task
-            )
-        ) {
-
+    const candidates = rooms
+        .filter(room => {
             if (
-                hasSectionConflict(
-
-                    allEntries,
-
-                    row.SectionId,
-
-                    slot.TimeSlotId
-                )
+                Number(room.CampusId) !== campusId
             ) {
-
                 return false;
             }
-        }
-
-
-        // ==================================================
-        // TEACHER SAME TIME
-        // ==================================================
-
-        if (
-            hasTeacherConflict(
-
-                allEntries,
-
-                task.teacherId,
-
-                slot.TimeSlotId
-            )
-        ) {
-
-            return false;
-        }
-
-
-        // ==================================================
-        // TEACHER DAILY MAX 5
-        // ==================================================
-
-        if (
-            getTeacherDailyLectureCount(
-
-                allEntries,
-
-                task.teacherId,
-
-                dayOfWeek,
-
-                timeSlots
-            ) >=
-            5
-        ) {
-
-            return false;
-        }
-
-
-        // ==================================================
-        // ROOM
-        // ==================================================
-
-        const room =
-            findRoomForTask(
-
-                rooms,
-
-                allEntries,
-
-                task,
-
-                slot.TimeSlotId
-            );
-
-
-        if (!room) {
-
-            return false;
-        }
-
-
-        // ==================================================
-        // ADD ENTRIES
-        // ==================================================
-
-        for (
-            const row
-            of task.rows
-        ) {
-
-            generatedEntries.push({
-
-                SectionSubjectId:
-                    Number(
-                        row.SectionSubjectId
-                    ),
-
-                SectionId:
-                    Number(
-                        row.SectionId
-                    ),
-
-                SubjectId:
-                    Number(
-                        row.SubjectId
-                    ),
-
-                TeacherId:
-                    Number(
-                        row.TeacherId
-                    ),
-
-                RoomId:
-                    Number(
-                        room.RoomId
-                    ),
-
-                TimeSlotId:
-                    Number(
-                        slot.TimeSlotId
-                    ),
-
-                AcademicSessionId:
-                    Number(
-                        academicSessionId
-                    ),
-
-                ClassType:
-
-                    task.type ===
-                    "Common"
-
-                        ? "Common"
-
-                        : "Regular",
-
-                Notes:
-
-                    task.type ===
-                    "Common"
-
-                        ? `Shared Teaching Group lecture - ${row.SubjectName}`
-
-                        : `Auto generated - ${row.SubjectName}`
-            });
-        }
-
-
-        scheduled++;
-
-
-        usedDays.add(
-            dayOfWeek
-        );
-
-
-        return true;
-    };
-
-
-    // ==================================================
-    // PASS 1:
-    // Prefer separate days
-    // ==================================================
-
-    for (
-        const slot
-        of timeSlots
-    ) {
-
-        if (
-            scheduled >=
-            task.requiredHours
-        ) {
-
-            break;
-        }
-
-
-        trySlot(
-            slot,
-            true
-        );
-    }
-
-
-    // ==================================================
-    // PASS 2:
-    // Allow same day if necessary
-    // ==================================================
-
-    if (
-        scheduled <
-        task.requiredHours
-    ) {
-
-        for (
-            const slot
-            of timeSlots
-        ) {
 
             if (
-                scheduled >=
-                task.requiredHours
+                room.AssignedSectionId !== null &&
+                room.AssignedSectionId !== undefined
             ) {
-
-                break;
+                return false;
             }
-
-
-            trySlot(
-                slot,
-                false
-            );
-        }
-    }
-
-
-    return scheduled;
-};
-
-
-// ======================================================
-// INSERT GENERATED ENTRIES
-// ======================================================
-
-const insertGeneratedEntries =
-    async (
-        generatedEntries
-    ) => {
-
-        if (
-            generatedEntries.length ===
-            0
-        ) {
-
-            return;
-        }
-
-
-        const pool =
-            await poolPromise;
-
-
-        const transaction =
-            new sql.Transaction(
-                pool
-            );
-
-
-        try {
-
-            await transaction.begin();
-
-
-            for (
-                const entry
-                of generatedEntries
-            ) {
-
-                await new sql.Request(
-                    transaction
-                )
-
-                    .input(
-                        "SectionSubjectId",
-                        sql.Int,
-                        entry.SectionSubjectId
-                    )
-
-                    .input(
-                        "TeacherId",
-                        sql.Int,
-                        entry.TeacherId
-                    )
-
-                    .input(
-                        "RoomId",
-                        sql.Int,
-                        entry.RoomId
-                    )
-
-                    .input(
-                        "TimeSlotId",
-                        sql.Int,
-                        entry.TimeSlotId
-                    )
-
-                    .input(
-                        "AcademicSessionId",
-                        sql.Int,
-                        entry.AcademicSessionId
-                    )
-
-                    .input(
-                        "ClassType",
-                        sql.NVarChar(30),
-                        entry.ClassType
-                    )
-
-                    .input(
-                        "Notes",
-                        sql.NVarChar(500),
-                        entry.Notes
-                    )
-
-                    .query(`
-
-                        INSERT INTO TimetableEntries
-                        (
-                            SectionSubjectId,
-                            TeacherId,
-                            RoomId,
-                            TimeSlotId,
-                            AcademicSessionId,
-                            ClassType,
-                            Notes,
-                            CreatedAt,
-                            UpdatedAt
-                        )
-
-                        VALUES
-                        (
-                            @SectionSubjectId,
-                            @TeacherId,
-                            @RoomId,
-                            @TimeSlotId,
-                            @AcademicSessionId,
-                            @ClassType,
-                            @Notes,
-                            SYSDATETIME(),
-                            SYSDATETIME()
-                        );
-                    `);
-            }
-
-
-            await transaction.commit();
-
-
-        } catch (error) {
-
-            try {
-
-                await transaction.rollback();
-
-
-            } catch (
-                rollbackError
-            ) {
-
-                console.error(
-                    "TIMETABLE ROLLBACK ERROR:",
-                    rollbackError
-                );
-            }
-
-
-            throw error;
-        }
-    };
-
-
-// ======================================================
-// VALIDATE HOME ROOMS BEFORE GENERATION
-// ======================================================
-
-const validateHomeRooms =
-    (
-        subjects,
-        rooms
-    ) => {
-
-        const uniqueSections =
-            new Map();
-
-
-        for (
-            const row
-            of subjects
-        ) {
 
             if (
-                !uniqueSections.has(
-                    Number(
-                        row.SectionId
-                    )
+                Number(room.Capacity) <
+                studentCount
+            ) {
+                return false;
+            }
+
+            if (
+                Number(room.RoomId) ===
+                Number(biologyRoomId)
+            ) {
+                return false;
+            }
+
+            if (
+                hasRoomConflict(
+                    allEntries,
+                    room.RoomId,
+                    timeSlotId
                 )
             ) {
-
-                uniqueSections.set(
-
-                    Number(
-                        row.SectionId
-                    ),
-
-                    row
-                );
-            }
-        }
-
-
-        for (
-            const row
-            of uniqueSections.values()
-        ) {
-
-            if (
-                !row.DefaultRoomId
-            ) {
-
-                throw new Error(
-
-                    `Please assign a classroom to section ${row.SectionCode} before generating timetable.`
-                );
+                return false;
             }
 
-
-            const room =
-                rooms.find(
-                    item =>
-
-                        Number(
-                            item.RoomId
-                        ) ===
-                        Number(
-                            row.DefaultRoomId
-                        )
-                );
-
-
-            if (!room) {
-
-                throw new Error(
-
-                    `Assigned classroom for ${row.SectionCode} does not exist or is inactive.`
-                );
-            }
-
-
-            if (
-                Number(
-                    room.CampusId
-                ) !==
-                Number(
-                    row.CampusId
-                )
-            ) {
-
-                throw new Error(
-
-                    `Assigned classroom for ${row.SectionCode} belongs to a different campus.`
-                );
-            }
-
-
-            if (
-                Number(
-                    room.Capacity
-                ) <
-                Number(
-                    row.StudentCount ||
-                    0
-                )
-            ) {
-
-                throw new Error(
-
-                    `Classroom ${room.RoomNumber} is too small for section ${row.SectionCode}.`
-                );
-            }
-        }
-    };
-
-
-// ======================================================
-// GENERATE TIMETABLE
-// ======================================================
-
-const generateTimetable =
-    async ({
-
-        academicSessionId,
-
-        clearExisting =
-            true
-
-    }) => {
-
-        academicSessionId =
-            Number(
-                academicSessionId
-            );
-
-
-        if (
-            !Number.isInteger(
-                academicSessionId
-            )
-
-            ||
-
-            academicSessionId <= 0
-        ) {
-
-            throw new Error(
-                "Valid AcademicSessionId is required."
-            );
-        }
-
-
-        const data =
-            await getGenerationData(
-                academicSessionId
-            );
-
-
-        if (
-            data.subjects.length ===
-            0
-        ) {
-
-            throw new Error(
-                "No active SectionSubjects found for this Academic Session."
-            );
-        }
-
-
-        if (
-            data.timeSlots.length ===
-            0
-        ) {
-
-            throw new Error(
-                "No active TimeSlots found."
-            );
-        }
-
-
-        if (
-            data.rooms.length ===
-            0
-        ) {
-
-            throw new Error(
-                "No active Rooms found."
-            );
-        }
-
-
-        // Validate BEFORE deleting existing timetable.
-        validateHomeRooms(
-            data.subjects,
-            data.rooms
+            return true;
+        })
+        .sort(
+            (a, b) =>
+                Number(a.Capacity) -
+                Number(b.Capacity)
         );
 
-
-        let reservedEntries =
-            [];
-
-
-        if (clearExisting) {
-
-            await clearTimetable(
-                academicSessionId
-            );
-
-
-        } else {
-
-            reservedEntries =
-                await getExistingEntries(
-                    academicSessionId
-                );
-        }
-
-
-        const tasks =
-            buildTasks(
-                data.subjects
-            );
-
-
-        const generatedEntries =
-            [];
-
-
-        const unscheduled =
-            [];
-
-
-        for (
-            const task
-            of tasks
-        ) {
-
-            const scheduled =
-                scheduleTask({
-
-                    task,
-
-                    timeSlots:
-                        data.timeSlots,
-
-                    rooms:
-                        data.rooms,
-
-                    reservedEntries,
-
-                    generatedEntries,
-
-                    academicSessionId
-                });
-
-
-            if (
-                scheduled <
-                task.requiredHours
-            ) {
-
-                unscheduled.push({
-
-                    type:
-                        task.type,
-
-                    teachingGroupId:
-                        task.teachingGroupId ||
-                        null,
-
-                    subjectId:
-                        task.subjectId,
-
-                    subjectName:
-                        task.rows[0]
-                            .SubjectName,
-
-                    requiredHours:
-                        task.requiredHours,
-
-                    scheduledHours:
-                        scheduled,
-
-                    sectionIds:
-                        getDistinctTaskRows(
-                            task
-                        )
-                            .map(
-                                row =>
-                                    Number(
-                                        row.SectionId
-                                    )
-                            ),
-
-                    sectionCodes:
-                        getDistinctTaskRows(
-                            task
-                        )
-                            .map(
-                                row =>
-                                    row.SectionCode
-                            )
-                });
-            }
-        }
-
-
-        await insertGeneratedEntries(
-            generatedEntries
-        );
-
-
-        return {
-
-            academicSessionId,
-
-            totalGenerated:
-                generatedEntries.length,
-
-            taskCount:
-                tasks.length,
-
-            unscheduledCount:
-                unscheduled.length,
-
-            unscheduled,
-
-            entries:
-                generatedEntries
-        };
-    };
-
-
-// ======================================================
-// GET GENERATED TIMETABLE
-// ======================================================
-
-const getGeneratedTimetable =
-    async (
-        academicSessionId
-    ) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    Number(
-                        academicSessionId
-                    )
-                )
-
-                .query(`
-
-                    SELECT
-                        te.TimetableEntryId,
-                        te.SectionSubjectId,
-                        te.TeacherId,
-                        te.RoomId,
-                        te.TimeSlotId,
-                        te.AcademicSessionId,
-                        te.ClassType,
-                        te.Notes,
-                        te.CreatedAt,
-                        te.UpdatedAt,
-
-                        ss.SectionId,
-                        ss.SubjectId,
-
-                        s.SectionCode,
-                        s.SectionName,
-
-                        sub.SubjectCode,
-                        sub.SubjectName,
-
-                        CONCAT
-                        (
-                            t.FirstName,
-
-                            CASE
-
-                                WHEN
-                                    t.LastName
-                                    IS NULL
-
-                                    OR
-
-                                    t.LastName = ''
-
-                                THEN
-                                    ''
-
-                                ELSE
-                                    ' ' +
-                                    t.LastName
-
-                            END
-                        )
-                        AS TeacherName,
-
-                        r.RoomNumber,
-                        r.RoomName,
-                        r.Capacity,
-
-                        ts.DayOfWeek,
-
-                        CONVERT
-                        (
-                            VARCHAR(8),
-                            ts.StartTime,
-                            108
-                        )
-                        AS StartTime,
-
-                        CONVERT
-                        (
-                            VARCHAR(8),
-                            ts.EndTime,
-                            108
-                        )
-                        AS EndTime,
-
-                        ts.SlotName
-
-                    FROM TimetableEntries te
-
-                    INNER JOIN SectionSubjects ss
-
-                        ON ss.SectionSubjectId =
-                           te.SectionSubjectId
-
-                    INNER JOIN Sections s
-
-                        ON s.SectionId =
-                           ss.SectionId
-
-                    INNER JOIN Subjects sub
-
-                        ON sub.SubjectId =
-                           ss.SubjectId
-
-                    INNER JOIN Teachers t
-
-                        ON t.TeacherId =
-                           te.TeacherId
-
-                    INNER JOIN Rooms r
-
-                        ON r.RoomId =
-                           te.RoomId
-
-                    INNER JOIN TimeSlots ts
-
-                        ON ts.TimeSlotId =
-                           te.TimeSlotId
-
-                    WHERE
-                        te.AcademicSessionId =
-                        @AcademicSessionId
-
-                    ORDER BY
-                        ts.DayOfWeek,
-                        ts.StartTime,
-                        s.SectionCode
-                `);
-
-
-        return result.recordset;
-    };
-
-
-// ======================================================
-// DELETE GENERATED TIMETABLE
-// ======================================================
-
-const deleteGeneratedTimetable =
-    async (
-        academicSessionId
-    ) => {
-
-        return clearTimetable(
-
-            Number(
-                academicSessionId
-            )
-        );
-    };
-
-
-// ======================================================
-// EXPORT
-// ======================================================
-
-module.exports = {
-
-    generateTimetable,
-
-    getGeneratedTimetable,
-
-    deleteGeneratedTimetable,
-
-    clearTimetable
+    return candidates[0] || null;
+    
 };
