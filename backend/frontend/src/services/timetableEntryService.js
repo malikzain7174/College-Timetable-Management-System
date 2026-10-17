@@ -1,8 +1,8 @@
 import axios from "axios";
+import { apiUrl } from "../config/api";
 
 
-const API_URL =
-    "http://localhost:5000/api/timetableentries";
+const API_URL = apiUrl("/api/timetableentries");
 
 
 export const getAllTimetableEntries =

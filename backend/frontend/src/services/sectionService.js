@@ -1,8 +1,8 @@
 import axios from "axios";
+import { apiUrl } from "../config/api";
 
 
-const API_URL =
-    "http://localhost:5000/api/sections";
+const API_URL = apiUrl("/api/sections");
 
 
 // GET ALL
