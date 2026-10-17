@@ -1,7 +1,7 @@
 import axios from "axios";
+import { apiUrl } from "../config/api";
 
-const API_URL =
-    "http://localhost:5000/api/teaching-group-sections";
+const API_URL = apiUrl("/api/teaching-group-sections");
 
 
 export const getAllTeachingGroupSections =
