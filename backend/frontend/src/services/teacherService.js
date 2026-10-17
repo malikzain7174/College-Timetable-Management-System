@@ -1,7 +1,7 @@
 import axios from "axios";
+import { apiUrl } from "../config/api";
 
-const API_URL =
-    "http://localhost:5000/api/teachers";
+const API_URL = apiUrl("/api/teachers");
 
 
 export const getAllTeachers = async () => {
