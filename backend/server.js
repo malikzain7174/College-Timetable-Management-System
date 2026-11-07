@@ -5,6 +5,7 @@ const cors = require("cors");
 const { existsSync } = require("node:fs");
 const path = require("node:path");
 const { getPool } = require("./config/db");
+const { getPgPool } = require("./postgres/client");
 const { HttpError } = require("./lib/httpError");
 const { requireSession, requireAdmin } = require("./middleware/auth");
 
@@ -32,15 +33,23 @@ app.use(express.json({ limit: "1mb" }));
 async function health(req, res) {
     res.set("Cache-Control", "no-store");
     try {
-        const pool = await getPool();
-        await pool.request().query(`
-            SELECT CASE WHEN OBJECT_ID(N'dbo.UserSessions', N'U') IS NOT NULL
-                AND OBJECT_ID(N'dbo.TimetableEntries', N'U') IS NOT NULL THEN 1 ELSE 0 END AS ready;
-        `).then(({ recordset: [row] }) => {
-            if (!row.ready) throw new Error("Database migrations are required.");
-        });
+        if (process.env.DB_PROVIDER === "postgres") {
+            const { rows: [row] } = await getPgPool().query(`
+                SELECT to_regclass('public."UserSessions"') IS NOT NULL
+                  AND to_regclass('public."TimetableEntries"') IS NOT NULL AS ready
+            `);
+            if (!row?.ready) throw new Error("PostgreSQL migrations are required.");
+        } else {
+            const pool = await getPool();
+            const { recordset: [row] } = await pool.request().query(`
+                SELECT CASE WHEN OBJECT_ID(N'dbo.UserSessions', N'U') IS NOT NULL
+                    AND OBJECT_ID(N'dbo.TimetableEntries', N'U') IS NOT NULL THEN 1 ELSE 0 END AS ready;
+            `);
+            if (!row.ready) throw new Error("SQL Server migrations are required.");
+        }
         res.json({ status: "ok", database: "connected" });
-    } catch {
+    } catch (error) {
+        console.error("Health check failed:", error.code || error.message);
         res.status(503).json({ status: "unavailable", database: "unavailable" });
     }
 }
