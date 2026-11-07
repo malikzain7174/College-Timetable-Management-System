@@ -1,7 +1,7 @@
 const departmentService =
-    require(
+    (process.env.DB_PROVIDER === "postgres" ? require("../postgres").departmentService : require(
         "../services/departmentService"
-    );
+    ));
 
 
 // ======================================================

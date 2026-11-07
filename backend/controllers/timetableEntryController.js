@@ -1,4 +1,4 @@
-const entries = require("../services/timetableEntryService");
+const entries = (process.env.DB_PROVIDER === "postgres" ? require("../postgres").timetableEntryService : require("../services/timetableEntryService"));
 const { positiveId } = require("../lib/httpError");
 
 async function getAllTimetableEntries(req, res) {

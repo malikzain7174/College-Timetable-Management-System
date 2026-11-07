@@ -1,0 +1,36 @@
+name: Bootstrap PostgreSQL dependency lockfile
+
+on:
+  push:
+    paths:
+      - '.github/workflows/bootstrap-pg.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-lockfile:
+    if: github.ref == 'refs/heads/feature/neon-postgres-migration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned PostgreSQL client in migration branch only
+        working-directory: backend
+        run: npm install pg@8.16.3 --save-exact
+      - name: Confirm clean reproducible install
+        working-directory: backend
+        run: npm ci
+      - name: Commit npm manifest and lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/package.json backend/package-lock.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Install pinned pg dependency and regenerate npm lockfile"
+          git push origin HEAD:feature/neon-postgres-migration

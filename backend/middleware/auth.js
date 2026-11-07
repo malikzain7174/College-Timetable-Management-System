@@ -1,4 +1,4 @@
-const auth = require("../services/authService");
+const auth = (process.env.DB_PROVIDER === "postgres" ? require("../postgres").authService : require("../services/authService"));
 const { HttpError } = require("../lib/httpError");
 
 async function requireSession(req, res, next) {

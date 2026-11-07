@@ -1,5 +1,5 @@
 const timeSlotService =
-    require("../services/timeSlotService");
+    (process.env.DB_PROVIDER === "postgres" ? require("../postgres").timeSlotService : require("../services/timeSlotService"));
 
 
 // ======================================================

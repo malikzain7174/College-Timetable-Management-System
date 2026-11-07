@@ -1,4 +1,4 @@
-const rules = require("../services/timetableRuleService");
+const rules = (process.env.DB_PROVIDER === "postgres" ? require("../postgres").timetableRuleService : require("../services/timetableRuleService"));
 const { positiveId } = require("../lib/httpError");
 
 const ruleId = req => positiveId(req.params.ruleId, "rule ID");

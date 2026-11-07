@@ -1,5 +1,5 @@
 const subjectService =
-    require("../services/subjectService");
+    (process.env.DB_PROVIDER === "postgres" ? require("../postgres").subjectService : require("../services/subjectService"));
 
 
 // ======================================================

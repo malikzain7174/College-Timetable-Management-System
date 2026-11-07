@@ -1,5 +1,5 @@
 const sectionSubjectService =
-    require("../services/sectionSubjectService");
+    (process.env.DB_PROVIDER === "postgres" ? require("../postgres").sectionSubjectService : require("../services/sectionSubjectService"));
 
 
 // ======================================================

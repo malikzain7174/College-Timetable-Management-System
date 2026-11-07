@@ -1,0 +1,65 @@
+name: PostgreSQL migration checks
+
+on:
+  push:
+    branches: [feature/neon-postgres-migration]
+  pull_request:
+    paths:
+      - 'database/postgres/**'
+      - 'backend/postgres/**'
+      - 'backend/test/**'
+      - 'backend/package*.json'
+      - '.github/workflows/postgres-migration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-postgresql:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: timetable_test
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: timetable_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U timetable_test -d timetable_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: timetable_test
+      PGPASSWORD: test-only-password
+      PGDATABASE: timetable_test
+      DATABASE_URL: postgresql://timetable_test:test-only-password@localhost:5432/timetable_test?sslmode=disable
+      PG_ALLOW_DISPOSABLE_MIGRATION: 'YES'
+      RUN_PG_TESTS: '1'
+      DB_PROVIDER: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+      - name: Verify generated schema structure
+        run: node database/postgres/verify-schema.test.js
+      - name: Apply schema in temporary PostgreSQL database
+        run: node database/postgres/apply-disposable.js
+      - name: Check tables and constraints
+        run: |
+          test "$(psql -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' AND table_name IN ('Users','Teachers','Sections','TimetableEntries','UserSessions')")" = "5"
+          psql -Atqc "SELECT count(*) FROM pg_constraint WHERE conname='FK_TimetableEntries_Teachers'" | grep -qx '1'
+      - name: Run backend unit tests
+        run: npm test
+        working-directory: backend

@@ -3,7 +3,8 @@ require("dotenv").config({ quiet: true });
 const { HttpError } = require("../lib/httpError");
 
 const defaultAuth = process.platform === "win32" ? "windows" : "sql";
-const useWindowsAuth = (process.env.DB_AUTH || defaultAuth).toLowerCase() === "windows";
+const useWindowsAuth = process.env.DB_PROVIDER !== "postgres" &&
+    (process.env.DB_AUTH || defaultAuth).toLowerCase() === "windows";
 const sql = useWindowsAuth ? require("mssql/msnodesqlv8") : require("mssql");
 
 const database = process.env.DB_DATABASE || "CollegeTimetableDB";

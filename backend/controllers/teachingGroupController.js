@@ -1,6 +1,6 @@
 const { HttpError, positiveId } = require("../lib/httpError");
 const teachingGroupService =
-    require("../services/teachingGroupService");
+    (process.env.DB_PROVIDER === "postgres" ? require("../postgres").teachingGroupService : require("../services/teachingGroupService"));
 
 
 const parseBoolean = (
