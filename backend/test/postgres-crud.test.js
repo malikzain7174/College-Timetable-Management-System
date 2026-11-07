@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createSubjectService } = require("../postgres/subjectService");
 const { createRoomService } = require("../postgres/roomService");
+const { createDepartmentService } = require("../postgres/departmentService");
 
 function fakePool(returnRows = [{ SubjectId: 11, RoomId: 22 }]) {
   const calls = [];
@@ -64,4 +65,24 @@ test("rooms: duplicates, update, deactivate and delete preserve semantics", asyn
   assert.equal(await service.deactivateRoom(22), 1);
   assert.equal(await service.deleteRoom(22), 1);
   await assert.rejects(service.getRoomById("DROP TABLE"), TypeError);
+});
+
+test("departments: case-insensitive duplicate lookup and safe exclusion", async () => {
+  const pool = fakePool([{ DepartmentId: 8 }]);
+  const service = createDepartmentService(pool);
+  assert.equal((await service.findDuplicateDepartment("Computing", "CS", 8)).DepartmentId, 8);
+  assert.match(pool.calls[0].sql, /lower\("DepartmentName"\) = lower\(\$1\)/);
+  assert.match(pool.calls[0].sql, /"DepartmentId" <> \$3/);
+  assert.deepEqual(pool.calls[0].values, ["Computing", "CS", 8]);
+});
+
+test("departments: create, update and delete preserve SQL Server return shapes", async () => {
+  const pool = fakePool([{ DepartmentId: 8 }]);
+  const service = createDepartmentService(pool);
+  const data = { DepartmentName: "Computing", DepartmentCode: "CS", IsActive: true };
+  assert.deepEqual(await service.createDepartment(data), { DepartmentId: 8 });
+  assert.match(pool.calls[0].sql, /RETURNING "DepartmentId"/);
+  assert.equal(await service.updateDepartment(8, data), 1);
+  assert.equal(await service.deleteDepartment(8), 1);
+  await assert.rejects(service.deleteDepartment("not-an-id"), TypeError);
 });
