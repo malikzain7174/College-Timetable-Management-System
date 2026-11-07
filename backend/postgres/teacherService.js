@@ -35,10 +35,10 @@ function createTeacherService(pool = getPgPool()) {
         ...teacher,
         DepartmentIds: dept.map(d => d.DepartmentId),
         Departments: dept.map(({ TeacherId, ...d }) => d),
-        DepartmentNames: dept.map(d => d.DepartmentName),
+        DepartmentNames: dept.map(d => d.DepartmentName).join(", "),
         SubjectIds: subs.map(s => s.SubjectId),
         Subjects: subs.map(({ TeacherId, ...s }) => s),
-        SubjectNames: subs.map(s => s.SubjectName)
+        SubjectNames: subs.map(s => s.SubjectName).join(", ")
       };
     });
   }
