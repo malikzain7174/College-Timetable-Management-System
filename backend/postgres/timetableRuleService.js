@@ -130,4 +130,12 @@ function getBestRule(rules,code,context) {
   return match.find(rule=>rule.ScopeType!=="Global")||match[0];
 }
 // Factory method and pure rule selectors exported independently for the scheduler.
-module.exports={createTimetableRuleService,getBestRule,getMatchingRules};
+module.exports={
+  createTimetableRuleService,getBestRule,getMatchingRules,
+  getAllRules:db=>createTimetableRuleService().getAllRules(db),
+  getRuleById:(id,db)=>createTimetableRuleService().getRuleById(id,db),
+  createRule:data=>createTimetableRuleService().createRule(data),
+  updateRule:(id,data)=>createTimetableRuleService().updateRule(id,data),
+  toggleRule:(id,enabled)=>createTimetableRuleService().toggleRule(id,enabled),
+  deleteRule:id=>createTimetableRuleService().deleteRule(id)
+};
