@@ -1,55 +1,16 @@
-import axios from "axios";
+import { api, apiUrl } from "../config/api";
 
+const endpoint = apiUrl("/api/timetable-generator");
 
-const API_URL =
-    "http://localhost:5000/api/timetable-generator";
+export async function generateTimetable(sessionId, clearExisting, { previewOnly, previewFingerprint } = {}) {
+    const response = await api.post(`${endpoint}/generate`, {
+        AcademicSessionId: sessionId, ClearExisting: clearExisting,
+        PreviewOnly: Boolean(previewOnly), PreviewFingerprint: previewFingerprint
+    });
+    return response.data;
+}
 
-
-export const generateTimetable =
-    async (
-        academicSessionId,
-        clearExisting = true
-    ) => {
-
-        const response =
-            await axios.post(
-                `${API_URL}/generate`,
-                {
-                    AcademicSessionId:
-                        academicSessionId,
-
-                    ClearExisting:
-                        clearExisting
-                }
-            );
-
-        return response.data;
-    };
-
-
-export const getGeneratedTimetable =
-    async (
-        academicSessionId
-    ) => {
-
-        const response =
-            await axios.get(
-                `${API_URL}/${academicSessionId}`
-            );
-
-        return response.data;
-    };
-
-
-export const deleteGeneratedTimetable =
-    async (
-        academicSessionId
-    ) => {
-
-        const response =
-            await axios.delete(
-                `${API_URL}/${academicSessionId}`
-            );
-
-        return response.data;
-    };
+export async function deleteGeneratedTimetable(sessionId) {
+    const response = await api.delete(`${endpoint}/${sessionId}`);
+    return response.data;
+}

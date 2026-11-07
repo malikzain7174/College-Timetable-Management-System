@@ -1,8 +1,7 @@
-import axios from "axios";
+import { api as axios, apiUrl } from "../config/api";
 
 
-const API_URL =
-    "http://localhost:5000/api/departments";
+const API_URL = apiUrl("/api/departments");
 
 
 // ======================================================

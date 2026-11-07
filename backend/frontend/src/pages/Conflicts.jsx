@@ -10,7 +10,7 @@ import {
 } from "react-router-dom";
 
 import {
-    getAllSections
+    getSectionLookups
 } from "../services/sectionService";
 
 import {
@@ -46,7 +46,9 @@ const DEFAULT_SUMMARY = {
     teacherDailyLoadConflicts: 0,
     highSeverity: 0,
     mediumSeverity: 0,
-    isValid: true
+    status: "empty",
+    missingAssignments: [],
+    isValid: false
 };
 
 
@@ -102,6 +104,8 @@ const normalizeSummary = (
                 summaryData?.mediumSeverity
             ) || 0,
 
+        status: summaryData?.status || "empty",
+        missingAssignments: summaryData?.missingAssignments || [],
         isValid:
             summaryData?.isValid === true
     };
@@ -137,8 +141,8 @@ function Conflicts() {
 
 
     const [
-        sections,
-        setSections
+        sessionOptions,
+        setSessionOptions
     ] = useState([]);
 
 
@@ -188,147 +192,22 @@ function Conflicts() {
     // SESSION OPTIONS
     // ========================================================
 
-    const sessionOptions =
-        useMemo(() => {
-
-            return [
-                ...new Set(
-                    sections
-                        .map(
-                            item =>
-                                Number(
-                                    item
-                                        .AcademicSessionId
-                                )
-                        )
-                        .filter(
-                            item =>
-                                Number.isInteger(
-                                    item
-                                ) &&
-                                item > 0
-                        )
-                )
-            ].sort(
-                (a, b) =>
-                    a - b
-            );
-
-        }, [sections]);
-
-
-    // ========================================================
-    // INITIAL LOAD
-    //
-    // Load sections and select first available session.
-    // setState happens after awaited external API request.
-    // ========================================================
-
     useEffect(() => {
-
         let cancelled = false;
-
-
-        const initializePage =
-            async () => {
-
-                try {
-
-                    const data =
-                        await getAllSections();
-
-
-                    if (cancelled) {
-                        return;
-                    }
-
-
-                    const list =
-                        Array.isArray(data)
-                            ? data
-                            : [];
-
-
-                    const sessions =
-                        [
-                            ...new Set(
-                                list
-                                    .map(
-                                        item =>
-                                            Number(
-                                                item
-                                                    .AcademicSessionId
-                                            )
-                                    )
-                                    .filter(
-                                        item =>
-                                            Number.isInteger(
-                                                item
-                                            ) &&
-                                            item > 0
-                                    )
-                            )
-                        ].sort(
-                            (a, b) =>
-                                a - b
-                        );
-
-
-                    setSections(list);
-
-
-                    if (
-                        sessions.length > 0
-                    ) {
-
-                        setSelectedSession(
-                            String(
-                                sessions[0]
-                            )
-                        );
-
-                    } else {
-
-                        setLoading(false);
-                    }
-
-
-                } catch (error) {
-
-                    if (cancelled) {
-                        return;
-                    }
-
-
-                    console.error(
-                        "Load sessions error:",
-                        error
-                    );
-
-
-                    setLoading(false);
-
-
-                    alert(
-                        error.response
-                            ?.data
-                            ?.message ||
-                        "Failed to load academic sessions."
-                    );
-                }
-            };
-
-
-        initializePage();
-
-
-        return () => {
-
-            cancelled = true;
-        };
-
+        getSectionLookups().then(({ academicSessions = [] }) => {
+            if (cancelled) return;
+            setSessionOptions(academicSessions);
+            const current = academicSessions.find(item => item.IsCurrent) || academicSessions[0];
+            if (current) setSelectedSession(String(current.AcademicSessionId));
+            else setLoading(false);
+        }).catch(error => {
+            if (!cancelled) {
+                setLoading(false);
+                alert(error.response?.data?.message || "Failed to load academic sessions.");
+            }
+        });
+        return () => { cancelled = true; };
     }, []);
-
 
     // ========================================================
     // AUTO LOAD CONFLICTS
@@ -593,20 +472,6 @@ function Conflicts() {
 
 
                 await loadConflicts();
-
-
-                if (result?.isValid) {
-
-                    alert(
-                        "Timetable validation completed. No conflicts found."
-                    );
-
-                } else {
-
-                    alert(
-                        `Validation completed. ${result?.totalConflicts || 0} conflict(s) found.`
-                    );
-                }
 
 
             } catch (error) {
@@ -1029,7 +894,7 @@ function Conflicts() {
 
                     <span>
                         {" "}
-                        Create sections with an
+                        Create an
                         AcademicSessionId first.
                     </span>
 
@@ -1061,7 +926,7 @@ function Conflicts() {
                             handleSessionChange
                         }
                         disabled={
-                            sessionOptions.length === 0
+                            sessionOptions.length === 0 || validating
                         }
                     >
 
@@ -1073,24 +938,11 @@ function Conflicts() {
                         )}
 
 
-                        {sessionOptions.map(
-                            session => (
-
-                                <option
-                                    key={
-                                        session
-                                    }
-                                    value={
-                                        session
-                                    }
-                                >
-
-                                    Session {session}
-
-                                </option>
-                            )
-                        )}
-
+                        {sessionOptions.map(session => (
+                            <option key={session.AcademicSessionId} value={session.AcademicSessionId}>
+                                {session.SessionName}
+                            </option>
+                        ))}
                     </select>
 
                 </div>
@@ -1343,55 +1195,21 @@ function Conflicts() {
                 VALIDATION STATUS
             ================================================ */}
 
-            <div
-                className={
-                    summary.isValid
-                        ? "validation-status valid"
-                        : "validation-status invalid"
-                }
-            >
-
-                <strong>
-
-                    {summary.isValid
-                        ? "✓ Timetable Valid"
-                        : "⚠ Conflicts Detected"
-                    }
-
-                </strong>
-
-
-                <span>
-
-                    {summary.isValid
-                        ? " No scheduling conflicts were detected."
-                        : ` ${summary.totalConflicts} conflict(s) require attention.`
-                    }
-
-                </span>
-
-            </div>
-
-
-            {/* ===============================================
-                LAST VALIDATION
-            ================================================ */}
-
-            {lastValidated && (
-
-                <div className="last-validation">
-
-                    Last validation:
-                    {" "}
-
-                    {lastValidated.isValid
-                        ? "Valid"
-                        : `${lastValidated.totalConflicts || 0} conflict(s)`
-                    }
-
-                </div>
-            )}
-
+            {!loading && <div className={summary.isValid ? "validation-status valid" : "validation-status invalid"} role="status">
+                <strong>{{
+                    ready: "Timetable valid", empty: "No timetable saved", incomplete: "Timetable incomplete", conflicts: "Conflicts detected"
+                }[summary.status]}</strong>
+                <span> {summary.totalConflicts} conflict(s) · {summary.missingAssignments.length} incomplete assignment(s)</span>
+            </div>}
+            {!loading && summary.missingAssignments.length > 0 && <details className="last-validation">
+                <summary>Review incomplete assignments</summary>
+                <ul>{summary.missingAssignments.map(item => <li key={item.sectionSubjectId}>
+                    {item.sectionCode} · {item.subjectName} · {item.scheduledHours} of {item.requiredHours} periods
+                </li>)}</ul>
+            </details>}
+            {lastValidated && <div className="last-validation" role="status">
+                Last validation · {lastValidated.totalConflicts} conflict(s) · {lastValidated.missingAssignments.length} incomplete assignment(s)
+            </div>}
 
             {/* ===============================================
                 TABLE

@@ -380,3 +380,21 @@ input[readonly] {
         grid-template-columns: 1fr;
     }
 }
+.sections-page .section-list-tools {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+.sections-page .section-list-tools input {
+    width: min(360px, 100%);
+    min-width: 0;
+}
+.sections-page .table-wrapper { max-width: 100%; }
+
+@media (max-width: 700px) {
+    .sections-page .table-header { flex-wrap: wrap; gap: 12px; }
+    .sections-page .section-list-tools { width: 100%; }
+    .sections-page .section-list-tools input { flex: 1; }
+    .sections-page .section-list-tools .refresh-btn { flex-shrink: 0; }
+}

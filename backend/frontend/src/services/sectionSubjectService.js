@@ -1,7 +1,6 @@
-import axios from "axios";
+import { api as axios, apiUrl } from "../config/api";
 
-const API_URL =
-    "http://localhost:5000/api/sectionsubjects";
+const API_URL = apiUrl("/api/sectionsubjects");
 
 
 export const getAllSectionSubjects = async () => {

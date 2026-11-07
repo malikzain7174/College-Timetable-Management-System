@@ -12,6 +12,8 @@ import {
     deleteRoom
 } from "../services/roomService";
 
+import { Link } from "react-router-dom";
+import { getSectionLookups } from "../services/sectionService";
 import "./Rooms.css";
 
 
@@ -38,6 +40,7 @@ const initialFormData = {
 
 
 function Rooms() {
+    const [campuses, setCampuses] = useState([]);
 
     // ==================================================
     // STATE
@@ -81,12 +84,12 @@ function Rooms() {
 
             try {
 
-                const data =
-                    await getAllRooms();
+                const [data, lookups] = await Promise.all([getAllRooms(), getSectionLookups()]);
 
 
                 if (!cancelled) {
 
+                    setCampuses(lookups.campuses || []);
                     setRooms(
                         Array.isArray(data)
                             ? data
@@ -299,7 +302,7 @@ function Rooms() {
         ) {
 
             alert(
-                "Valid Campus ID is required."
+                "Select a campus."
             );
 
             return false;
@@ -683,27 +686,15 @@ function Rooms() {
 
                             <div className="room-form-group">
 
-                                <label htmlFor="CampusId">
-                                    Campus ID *
-                                </label>
-
-                                <input
-                                    id="CampusId"
-                                    type="number"
-                                    name="CampusId"
-                                    min="1"
-                                    value={
-                                        formData.CampusId
-                                    }
-                                    onChange={
-                                        handleChange
-                                    }
-                                    placeholder="e.g. 1"
-                                    disabled={
-                                        saving
-                                    }
-                                />
-
+                                <label htmlFor="CampusId">Campus *</label>
+                                <select id="CampusId" name="CampusId" value={formData.CampusId}
+                                    onChange={handleChange} disabled={saving} required>
+                                    <option value="">Select a campus</option>
+                                    {campuses.map(campus => <option key={campus.CampusId} value={campus.CampusId}>
+                                        {campus.CampusName}
+                                    </option>)}
+                                </select>
+                                {!loading && !campuses.length && <p><Link to="/sections">Create a campus in Sections</Link> first.</p>}
                             </div>
 
 

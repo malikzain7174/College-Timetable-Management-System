@@ -327,88 +327,16 @@ function TimetableRules() {
     );
 
 
-    const loadData =
-        async () => {
-
-            try {
-
-                setLoading(true);
-
-
-                const [
-                    rulesData,
-                    teacherData,
-                    subjectData,
-                    sectionData
-                ] = await Promise.all([
-
-                    getAllTimetableRules(),
-
-                    getAllTeachers(),
-
-                    getAllSubjects(),
-
-                    getAllSections()
-
-                ]);
-
-
-                setRules(
-                    Array.isArray(
-                        rulesData
-                    )
-                        ? rulesData
-                        : []
-                );
-
-
-                setTeachers(
-                    Array.isArray(
-                        teacherData
-                    )
-                        ? teacherData
-                        : []
-                );
-
-
-                setSubjects(
-                    Array.isArray(
-                        subjectData
-                    )
-                        ? subjectData
-                        : []
-                );
-
-
-                setSections(
-                    Array.isArray(
-                        sectionData
-                    )
-                        ? sectionData
-                        : []
-                );
-
-            } catch (error) {
-
-                console.error(
-                    "LOAD RULES ERROR:",
-                    error
-                );
-
-
-                alert(
-                    error.response
-                        ?.data
-                        ?.message ||
-                    "Failed to load timetable rules."
-                );
-
-            } finally {
-
-                setLoading(false);
-            }
-        };
-
+    const loadData = () => Promise.all([
+        getAllTimetableRules(), getAllTeachers(), getAllSubjects(), getAllSections()
+    ]).then(([rulesData, teacherData, subjectData, sectionData]) => {
+        setRules(Array.isArray(rulesData) ? rulesData : []);
+        setTeachers(Array.isArray(teacherData) ? teacherData : []);
+        setSubjects(Array.isArray(subjectData) ? subjectData : []);
+        setSections(Array.isArray(sectionData) ? sectionData : []);
+    }).catch(error => {
+        alert(error.response?.data?.message || "Failed to load timetable rules.");
+    }).finally(() => setLoading(false));
 
     useEffect(
         () => {
@@ -740,6 +668,7 @@ function TimetableRules() {
                 closeForm();
 
 
+                setLoading(true);
                 await loadData();
 
             } catch (error) {
@@ -788,6 +717,7 @@ function TimetableRules() {
                 );
 
 
+                setLoading(true);
                 await loadData();
 
             } catch (error) {
@@ -830,6 +760,7 @@ function TimetableRules() {
                 );
 
 
+                setLoading(true);
                 await loadData();
 
             } catch (error) {
@@ -979,7 +910,6 @@ function TimetableRules() {
 
 
                 case "TEACHER_BLOCK_PERIOD":
-
                 case "SECTION_BLOCK_PERIOD":
 
                     return (

@@ -1,7 +1,6 @@
-import axios from "axios";
+import { api as axios, apiUrl } from "../config/api";
 
-const API_URL =
-    "http://localhost:5000/api/timeslots";
+const API_URL = apiUrl("/api/timeslots");
 
 
 export const getAllTimeSlots = async () => {

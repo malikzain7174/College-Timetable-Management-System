@@ -1,197 +1,89 @@
+require("dotenv").config({ quiet: true });
+
 const express = require("express");
 const cors = require("cors");
-
-const { poolPromise } =
-    require("./config/db");
-
-
-// ======================================================
-// ROUTES
-// ======================================================
-
-const teacherRoutes =
-    require("./routes/teacherRoutes");
-
-const subjectRoutes =
-    require("./routes/subjectRoutes");
-
-const sectionRoutes =
-    require("./routes/sectionRoutes");
-
-const departmentRoutes =
-    require("./routes/departmentRoutes");
-
-const roomRoutes =
-    require("./routes/roomRoutes");
-
-const timeSlotRoutes =
-    require("./routes/timeSlotRoutes");
-
-const sectionSubjectRoutes =
-    require("./routes/sectionSubjectRoutes");
-
-const timetableEntryRoutes =
-    require("./routes/timetableEntryRoutes");
-
-const teachingGroupRoutes =
-    require("./routes/teachingGroupRoutes");
-
-const teachingGroupSectionRoutes =
-    require("./routes/teachingGroupSectionRoutes");
-
-const conflictRoutes =
-    require("./routes/conflictRoutes");
-
-const timetableGeneratorRoutes =
-    require("./routes/timetableGeneratorRoutes");
-
-const timetableRuleRoutes = require("./routes/timetableRuleRoutes");
-
-// ======================================================
-// APP
-// ======================================================
+const { existsSync } = require("node:fs");
+const path = require("node:path");
+const { getPool } = require("./config/db");
+const { HttpError } = require("./lib/httpError");
+const { requireSession, requireAdmin } = require("./middleware/auth");
 
 const app = express();
+app.disable("x-powered-by");
+const proxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+if (Number.isInteger(proxyHops) && proxyHops > 0) app.set("trust proxy", proxyHops);
 
+const allowedOrigins = new Set((process.env.CORS_ORIGIN || "").split(",").map(value => value.trim()).filter(Boolean));
+if (process.env.NODE_ENV !== "production") {
+    allowedOrigins.add("http://localhost:5173");
+    allowedOrigins.add("http://127.0.0.1:5173");
+}
 
-// ======================================================
-// MIDDLEWARE
-// ======================================================
-
-app.use(cors());
-
-app.use(express.json());
-
-
-// ======================================================
-// ROUTE REGISTRATION
-// ======================================================
-
-app.use(
-    "/api/teachers",
-    teacherRoutes
-);
-
-app.use(
-    "/api/subjects",
-    subjectRoutes
-);
-
-app.use(
-    "/api/sections",
-    sectionRoutes
-);
-
-app.use(
-    "/api/departments",
-    departmentRoutes
-);
-
-app.use(
-    "/api/rooms",
-    roomRoutes
-);
-
-app.use(
-    "/api/timeslots",
-    timeSlotRoutes
-);
-
-app.use(
-    "/api/sectionsubjects",
-    sectionSubjectRoutes
-);
-
-app.use(
-    "/api/timetableentries",
-    timetableEntryRoutes
-);
-
-app.use(
-    "/api/teaching-groups",
-    teachingGroupRoutes
-);
-
-app.use(
-    "/api/teaching-group-sections",
-    teachingGroupSectionRoutes
-);
-
-app.use(
-    "/api/conflicts",
-    conflictRoutes
-);
-
-app.use(
-    "/api/timetable-generator",
-    timetableGeneratorRoutes
-);
-app.use(
-    "/api/timetable-rules",
-    timetableRuleRoutes
-);
-
-// ======================================================
-// ROOT
-// ======================================================
-
-app.get("/", async (req, res) => {
-
-    try {
-
-        await poolPromise;
-
-        return res.status(200).json({
-            message:
-                "Backend and SQL Server are connected successfully!"
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Database Connection Error:",
-            error
-        );
-
-        return res.status(500).json({
-            message:
-                "Database connection failed",
-            error:
-                error.message
-        });
+app.use(cors((req, callback) => {
+    const origin = req.get("Origin");
+    const sameOrigin = origin === `${req.protocol}://${req.get("Host")}`;
+    if (origin && !sameOrigin && !allowedOrigins.has(origin)) {
+        return callback(new HttpError(403, "Request origin is not allowed."));
     }
+    callback(null, { origin: origin || false });
+}));
+app.use(express.json({ limit: "1mb" }));
+
+async function health(req, res) {
+    res.set("Cache-Control", "no-store");
+    try {
+        const pool = await getPool();
+        await pool.request().query(`
+            SELECT CASE WHEN OBJECT_ID(N'dbo.UserSessions', N'U') IS NOT NULL
+                AND OBJECT_ID(N'dbo.TimetableEntries', N'U') IS NOT NULL THEN 1 ELSE 0 END AS ready;
+        `).then(({ recordset: [row] }) => {
+            if (!row.ready) throw new Error("Database migrations are required.");
+        });
+        res.json({ status: "ok", database: "connected" });
+    } catch {
+        res.status(503).json({ status: "unavailable", database: "unavailable" });
+    }
+}
+
+app.get("/health", health);
+app.use("/api/auth", require("./routes/authRoutes"));
+app.use("/api", requireSession, requireAdmin);
+app.use("/api/teachers", require("./routes/teacherRoutes"));
+app.use("/api/subjects", require("./routes/subjectRoutes"));
+app.use("/api/sections", require("./routes/sectionRoutes"));
+app.use("/api/departments", require("./routes/departmentRoutes"));
+app.use("/api/rooms", require("./routes/roomRoutes"));
+app.use("/api/timeslots", require("./routes/timeSlotRoutes"));
+app.use("/api/sectionsubjects", require("./routes/sectionSubjectRoutes"));
+app.use("/api/timetableentries", require("./routes/timetableEntryRoutes"));
+app.use("/api/teaching-groups", require("./routes/teachingGroupRoutes"));
+app.use("/api/teaching-group-sections", require("./routes/teachingGroupSectionRoutes"));
+app.use("/api/conflicts", require("./routes/conflictRoutes"));
+app.use("/api/timetable-generator", require("./routes/timetableGeneratorRoutes"));
+app.use("/api/timetable-rules", require("./routes/timetableRuleRoutes"));
+app.use("/api", (req, res) => res.status(404).json({ message: "Route not found." }));
+
+const frontend = path.join(__dirname, "frontend", "dist");
+if (existsSync(path.join(frontend, "index.html"))) {
+    app.use(express.static(frontend));
+    app.get("/{*path}", (req, res) => res.sendFile(path.join(frontend, "index.html")));
+} else {
+    app.get("/", health);
+}
+
+app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    const status = error instanceof HttpError ? error.status : error.status === 413 ? 413 : error.status === 400 ? 400 : 500;
+    if (status >= 500) console.error(error);
+    const message = error instanceof HttpError
+        ? error.message
+        : ({ 400: "Invalid request body.", 413: "Request body is too large." })[status] || "Internal server error.";
+    res.status(status).json({ success: false, message, data: error instanceof HttpError ? error.data : undefined });
 });
 
+if (require.main === module) {
+    const port = Number(process.env.PORT || 5000);
+    app.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`Server running on port ${port}`));
+}
 
-// ======================================================
-// ERROR HANDLER
-// ======================================================
-
-app.use((err, req, res, next) => {
-
-    console.error(
-        "Unhandled Server Error:",
-        err
-    );
-
-    res.status(500).json({
-        message:
-            "Internal Server Error",
-        error:
-            err.message
-    });
-});
-
-
-// ======================================================
-// START SERVER
-// ======================================================
-
-const PORT = 5000;
-
-app.listen(PORT, () => {
-
-    console.log(
-        `Server running on http://localhost:${PORT}`
-    );
-});
+module.exports = app;
