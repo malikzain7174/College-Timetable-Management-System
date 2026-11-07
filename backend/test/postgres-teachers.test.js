@@ -54,8 +54,7 @@ test("teachers: grouped read response keeps IDs, objects and comma-separated nam
   assert.deepEqual(result.SubjectIds, [8]);
 });
 test("teachers: rejecting invalid ids prevents SQL execution", async () => {
-  const db = fixture(() => { throw new Error("Unexpected SQL"); });
+  const db = fixture(() => ({ rows: [], rowCount: 0 }));
   await assert.rejects(createTeacherService(db).deleteTeacher("bad"), TypeError);
-  assert.equal(db.history.length, 1); // BEGIN; validation inside transaction rolls back
-  assert.equal(db.history[0].sql, "BEGIN");
+  assert.deepEqual(db.history.map(x => x.sql), ["BEGIN", "ROLLBACK"]);
 });
