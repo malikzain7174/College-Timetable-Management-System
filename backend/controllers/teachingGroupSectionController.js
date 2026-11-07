@@ -1,4 +1,4 @@
-const memberships = require("../services/teachingGroupSectionService");
+const memberships = (process.env.DB_PROVIDER === "postgres" ? require("../postgres").teachingGroupSectionService : require("../services/teachingGroupSectionService"));
 const { HttpError, positiveId } = require("../lib/httpError");
 
 const membershipId = req => positiveId(req.params.id, "membership ID");
