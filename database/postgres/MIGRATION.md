@@ -35,6 +35,14 @@ The following SQL Server-specific constructs are present in application services
 - The SQL text has been checked for several unconverted SQL Server-only tokens, but **has not yet been parsed or executed by PostgreSQL**. This is not a successful migration or live Neon deployment.
 - The SQL is for an **empty disposable test database** and should not be applied to the existing Neon production branch until a PostgreSQL runtime migration test succeeds.
 
+## PostgreSQL application adapter (isolated stage)
+
+- `backend/postgres/client.js`: lazy PostgreSQL pool, transaction and advisory-lock helpers. Production `DATABASE_URL` is read only when used; `pg` must be added to the package manifest **and regenerated lockfile** before activation.
+- `backend/postgres/authService.js`: PostgreSQL equivalents of credential validation, SHA-256 hashed sessions, sign-in, sign-out, session lookup, admin provisioning and password rotation.
+- `backend/test/postgres-auth.test.js`: mocked unit coverage for invalid credentials, token creation/revocation, and password rotation. These are **not Neon integration tests**.
+- The adapter is intentionally **not connected to `backend/server.js`**. The remaining services still depend on SQL Server, so switching the entire application now would break CRUD and timetable generation.
+- No credentials have been committed and no Neon project has been modified.
+
 ## Safe implementation order
 
 1. **Draft created, runtime testing pending:** validate `001_initial_schema.sql` on a disposable PostgreSQL branch and correct any parser/constraint errors; keep existing SQL Server scripts unchanged.
