@@ -4,9 +4,9 @@ Manage academic sessions, sections, subjects, staff, rooms and teaching periods.
 
 ## Local setup
 
-1. Install Node.js 22.12 or later and SQL Server 2019 or later. Use SQL Server Developer or Express locally, or an existing Azure SQL database.
+1. Install a supported Node.js LTS version (22.12 or later) and SQL Server 2019 or later. Use SQL Server Developer or Express locally, or an existing Azure SQL database.
 2. In SQL Server Management Studio or another SQL client, create an empty database named `CollegeTimetableDB`. For an existing installation, back up the database and point `DB_DATABASE` at it.
-3. Copy `backend/.env.example` to `backend/.env` and configure your connection. Use `DB_AUTH=sql` with a SQL Server login on Linux or Azure SQL. On Windows, `DB_AUTH=windows` uses the account running Node and requires the configured Microsoft ODBC driver.
+3. Copy `backend/.env.example` to `backend/.env` and configure your connection. Use `DB_AUTH=sql` with a SQL Server login on Linux, Windows or Azure SQL. The default installation uses the pure JavaScript `mssql`/Tedious driver and does not install native ODBC dependencies. Legacy `DB_AUTH=windows` is only supported on a local Windows installation after separately installing `msnodesqlv8` (`npm install --no-save msnodesqlv8`) and Microsoft ODBC Driver 17 or 18; do not use Windows Integrated Authentication on Vercel.
 4. From `backend`, install dependencies and migrate the database.
 
    ```sh
@@ -35,6 +35,25 @@ The database migration creates the base schema in an empty database and adds the
 - Admins manage timetable data. Teachers with an active account see only their own read-only timetable. Sessions expire after eight hours, and sign-out revokes the current session.
 
 For an existing administrator, set a new `ADMIN_PASSWORD` and run `npm run db:admin -- <username> --rotate`. This replaces the password and revokes the account's existing sessions and reset tokens. Rotate any live credential represented in the historical database export. The current database files contain schema and synthetic data.
+
+## Vercel deployment: two projects, one GitHub repository
+
+Vercel cannot run the SQL Server database itself. Use a hosted SQL Server (for example Azure SQL Database) and provision its schema **before** checking the deployed API. Do not commit credentials or database backups.
+
+**Backend Vercel project**
+1. Import this repository and set the **Root Directory** to `backend`.
+2. Select **Other** as framework (Express is automatically detected from `server.js`). Leave build command unset; install command `npm ci`. The `server.js` module exports the Express application for Vercel Functions.
+3. Configure production environment variables: `NODE_ENV=production`, `DB_AUTH=sql`, `DB_SERVER`, `DB_PORT=1433`, `DB_DATABASE`, `DB_USER`, `DB_PASSWORD`, `DB_TRUST_SERVER_CERTIFICATE=false`, and `CORS_ORIGIN=https://YOUR-FRONTEND.vercel.app`.
+4. Use a reachable, firewall-allowlisted, TLS-enabled hosted SQL Server. Configure database migrations and create the first admin through a trusted local/CI execution (`cd backend && npm ci && npm run db:migrate`, then `ADMIN_PASSWORD` with `npm run db:admin -- college-admin`), using secure temporary database credentials. Never run migrations or seed data on every serverless request.
+5. Deploy and verify `https://YOUR-API.vercel.app/health` returns `{"status":"ok","database":"connected"}`. A 503 means database connectivity or migrations still need work.
+
+**Frontend Vercel project**
+1. Import the **same repository** as a second Vercel project; set **Root Directory** to `backend/frontend`.
+2. Use **Vite**, install command `npm ci`, build command `npm run build`, and output directory `dist`.
+3. Set **build-time** `VITE_API_BASE_URL=https://YOUR-API.vercel.app` (no `/api` suffix). The existing `vercel.json` supports React SPA route refreshes.
+4. Redeploy the frontend after setting the API origin. Update the backend `CORS_ORIGIN` when the frontend's final domain is known.
+
+**Notes:** The backend uses SQL username/password authentication on Vercel; Windows Integrated Authentication and a laptop-only SQL Server instance cannot connect from Vercel. The frontend and backend deployments are separate; a successful frontend build does not mean the full app is live. Vercel Functions are request-driven, not an always-on Node.js process. Test sign-in, authorization, CRUD, timetable preview/save, and health checks after database provisioning.
 
 ## Scheduling workflow
 
