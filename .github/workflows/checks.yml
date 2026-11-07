@@ -1,0 +1,22 @@
+name: Timetable checks
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            backend/frontend/package-lock.json
+      - run: npm ci --prefix backend
+      - run: npm test --prefix backend
+      - run: npm ci --prefix backend/frontend
+      - run: npm run lint --prefix backend/frontend
+      - run: npm run build --prefix backend/frontend
