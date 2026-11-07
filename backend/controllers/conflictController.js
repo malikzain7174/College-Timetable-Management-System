@@ -1,4 +1,4 @@
-const conflicts = require("../services/conflictService");
+const conflicts = (process.env.DB_PROVIDER === "postgres" ? require("../postgres").conflictService : require("../services/conflictService"));
 const { positiveId } = require("../lib/httpError");
 
 const filterSession = req => req.query.academicSessionId === undefined
