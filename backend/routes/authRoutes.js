@@ -1,7 +1,7 @@
 const express = require("express");
 const { rateLimit } = require("express-rate-limit");
-const auth = require("../services/authService");
-const entries = require("../services/timetableEntryService");
+const auth = (process.env.DB_PROVIDER === "postgres" ? require("../postgres").authService : require("../services/authService"));
+const entries = (process.env.DB_PROVIDER === "postgres" ? require("../postgres").timetableEntryService : require("../services/timetableEntryService"));
 const { requireSession } = require("../middleware/auth");
 const { HttpError } = require("../lib/httpError");
 
