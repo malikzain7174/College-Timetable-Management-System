@@ -50,7 +50,7 @@ function createPostgresAuthService(pool = getPgPool(), locks = withPgAdvisoryLoc
   }
 
   async function getSession(token) {
-    if (typeof token !== "string" || !/^[\\w-]{43}$/.test(token)) return null;
+    if (typeof token !== "string" || !/^[\w-]{43}$/.test(token)) return null;
     const { rows: [user] } = await pool.query(`
       SELECT u."UserId", u."Username", u."TeacherId", u."Role"
       FROM "UserSessions" s
@@ -63,7 +63,7 @@ function createPostgresAuthService(pool = getPgPool(), locks = withPgAdvisoryLoc
   }
 
   async function signOut(token) {
-    if (typeof token !== "string" || !/^[\\w-]{43}$/.test(token)) return;
+    if (typeof token !== "string" || !/^[\w-]{43}$/.test(token)) return;
     await pool.query(`DELETE FROM "UserSessions" WHERE "TokenHash" = $1::bytea`, [hashToken(token)]);
   }
 
