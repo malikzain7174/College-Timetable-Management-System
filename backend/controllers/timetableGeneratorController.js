@@ -1,4 +1,4 @@
-const generator = require("../services/timetableGeneratorService");
+const generator = (process.env.DB_PROVIDER === "postgres" ? require("../postgres").timetableGeneratorService : require("../services/timetableGeneratorService"));
 const { HttpError, positiveId } = require("../lib/httpError");
 
 async function generateTimetable(req, res) {
