@@ -43,6 +43,15 @@ The following SQL Server-specific constructs are present in application services
 - The adapter is intentionally **not connected to `backend/server.js`**. The remaining services still depend on SQL Server, so switching the entire application now would break CRUD and timetable generation.
 - No credentials have been committed and no Neon project has been modified.
 
+## CRUD port: subjects and rooms (isolated)
+
+- `backend/postgres/subjectService.js` now contains PostgreSQL versions of get-all, get-by-id, create, update, delete, including `RETURNING "SubjectId"`.
+- `backend/postgres/roomService.js` now contains PostgreSQL get-all, get-by-id, campus-scoped duplicate lookup, create, update, delete and deactivate.
+- `backend/test/postgres-crud.test.js` contains four mocked query-contract tests including SQL parameter binding and ID rejection.
+- Both services explicitly inject a pool for testing and default to `getPgPool()`; neither service is wired into Express yet.
+- These test cases are **committed but have not been executed against the actual dependencies or a live PostgreSQL database**. No Neon credentials were retrieved.
+- Remaining domain CRUD modules include teachers, departments, sections, section subjects, teaching groups, time slots, rules and timetable writes. The `pg` package and matching lockfile are still not installed.
+
 ## Safe implementation order
 
 1. **Draft created, runtime testing pending:** validate `001_initial_schema.sql` on a disposable PostgreSQL branch and correct any parser/constraint errors; keep existing SQL Server scripts unchanged.
