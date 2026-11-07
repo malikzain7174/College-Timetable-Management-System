@@ -38,7 +38,7 @@ jobs:
       PGUSER: timetable_test
       PGPASSWORD: test-only-password
       PGDATABASE: timetable_test
-      DATABASE_URL: postgresql://timetable_test:test-only-password@localhost:5432/timetable_test
+      DATABASE_URL: postgresql://timetable_test:test-only-password@localhost:5432/timetable_test?sslmode=disable
       PG_ALLOW_DISPOSABLE_MIGRATION: 'YES'
     steps:
       - uses: actions/checkout@v4
