@@ -1,154 +1,23 @@
-const conflictService =
-    require("../services/conflictService");
+const conflicts = require("../services/conflictService");
+const { positiveId } = require("../lib/httpError");
 
+const filterSession = req => req.query.academicSessionId === undefined
+    ? null
+    : positiveId(req.query.academicSessionId, "academic session");
 
-// ============================================================
-// GET ALL CONFLICTS
-//
-// GET /api/conflicts
-// GET /api/conflicts?academicSessionId=1
-// ============================================================
+async function getAllConflicts(req, res) {
+    const academicSessionId = filterSession(req);
+    const items = await conflicts.getAllConflicts(academicSessionId);
+    res.json({ success: true, academicSessionId, totalConflicts: items.length, conflicts: items });
+}
 
-const getAllConflicts = async (req, res) => {
+async function getConflictSummary(req, res) {
+    res.json({ success: true, data: await conflicts.getConflictSummary(filterSession(req)) });
+}
 
-    try {
+async function validateTimetable(req, res) {
+    const session = positiveId(req.params.academicSessionId, "academic session");
+    res.json({ success: true, data: await conflicts.validateTimetable(session) });
+}
 
-        const academicSessionId =
-            req.query.academicSessionId
-                ? Number(req.query.academicSessionId)
-                : null;
-
-        const conflicts =
-            await conflictService.getAllConflicts(
-                academicSessionId
-            );
-
-        res.status(200).json({
-            success: true,
-            academicSessionId,
-            totalConflicts: conflicts.length,
-            conflicts
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Conflict Detection Error:",
-            error
-        );
-
-        res.status(500).json({
-            success: false,
-            message:
-                "Failed to detect conflicts",
-            error: error.message
-        });
-    }
-};
-
-
-// ============================================================
-// GET CONFLICT SUMMARY
-//
-// GET /api/conflicts/summary
-// GET /api/conflicts/summary?academicSessionId=1
-// ============================================================
-
-const getConflictSummary = async (req, res) => {
-
-    try {
-
-        const academicSessionId =
-            req.query.academicSessionId
-                ? Number(req.query.academicSessionId)
-                : null;
-
-        const summary =
-            await conflictService
-                .getConflictSummary(
-                    academicSessionId
-                );
-
-        res.status(200).json({
-            success: true,
-            data: summary
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Conflict Summary Error:",
-            error
-        );
-
-        res.status(500).json({
-            success: false,
-            message:
-                "Failed to get conflict summary",
-            error: error.message
-        });
-    }
-};
-
-
-// ============================================================
-// VALIDATE TIMETABLE
-//
-// GET /api/conflicts/validate/1
-// ============================================================
-
-const validateTimetable = async (req, res) => {
-
-    try {
-
-        const academicSessionId =
-            Number(
-                req.params.academicSessionId
-            );
-
-        if (!academicSessionId) {
-
-            return res.status(400).json({
-                success: false,
-                message:
-                    "AcademicSessionId is required."
-            });
-        }
-
-        const result =
-            await conflictService
-                .validateTimetable(
-                    academicSessionId
-                );
-
-        res.status(200).json({
-            success: true,
-            data: result
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Timetable Validation Error:",
-            error
-        );
-
-        res.status(500).json({
-            success: false,
-            message:
-                "Failed to validate timetable",
-            error: error.message
-        });
-    }
-};
-
-
-// ============================================================
-// EXPORT
-// ============================================================
-
-module.exports = {
-    getAllConflicts,
-    getConflictSummary,
-    validateTimetable
-};
+module.exports = { getAllConflicts, getConflictSummary, validateTimetable };

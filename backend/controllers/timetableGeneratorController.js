@@ -1,240 +1,29 @@
-const timetableGeneratorService =
-    require("../services/timetableGeneratorService");
+const generator = require("../services/timetableGeneratorService");
+const { HttpError, positiveId } = require("../lib/httpError");
 
-
-// ======================================================
-// GENERATE
-// ======================================================
-
-const generateTimetable = async (
-    req,
-    res
-) => {
-
-    try {
-
-        const academicSessionId =
-            Number(
-                req.body.AcademicSessionId
-            );
-
-
-        if (
-            !Number.isInteger(
-                academicSessionId
-            ) ||
-            academicSessionId <= 0
-        ) {
-
-            return res.status(400).json({
-
-                success:
-                    false,
-
-                message:
-                    "Valid AcademicSessionId is required."
-            });
-        }
-
-
-        const result =
-            await timetableGeneratorService
-                .generateTimetable({
-
-                    academicSessionId,
-
-                    clearExisting:
-                        req.body.ClearExisting !==
-                        false
-                });
-
-
-        return res.status(201).json({
-
-            success:
-                true,
-
-            message:
-                "Timetable generated successfully.",
-
-            data:
-                result
-        });
-
-
-    } catch (error) {
-
-        console.error(
-            "GENERATE TIMETABLE ERROR:",
-            error
-        );
-
-
-        return res.status(500).json({
-
-            success:
-                false,
-
-            message:
-                error.message ||
-                "Failed to generate timetable."
-        });
+async function generateTimetable(req, res) {
+    const { AcademicSessionId, ClearExisting = false, PreviewOnly = false, PreviewFingerprint } = req.body || {};
+    if (typeof ClearExisting !== "boolean" || typeof PreviewOnly !== "boolean" ||
+        (PreviewFingerprint !== undefined && (typeof PreviewFingerprint !== "string" || !/^[a-f\d]{64}$/.test(PreviewFingerprint)))) {
+        throw new HttpError(400, "Invalid timetable generation options.");
     }
-};
+    const data = await generator.generateTimetable({
+        academicSessionId: positiveId(AcademicSessionId, "academic session"),
+        clearExisting: ClearExisting, previewOnly: PreviewOnly, previewFingerprint: PreviewFingerprint
+    });
+    res.status(PreviewOnly || !data.totalGenerated ? 200 : 201).json({
+        success: true, message: PreviewOnly ? "Timetable preview ready." : "Timetable saved.", data
+    });
+}
 
+async function getGeneratedTimetable(req, res) {
+    const data = await generator.getGeneratedTimetable(positiveId(req.params.academicSessionId, "academic session"));
+    res.json({ success: true, data });
+}
 
-// ======================================================
-// GET
-// ======================================================
+async function deleteGeneratedTimetable(req, res) {
+    const data = await generator.deleteGeneratedTimetable(positiveId(req.params.academicSessionId, "academic session"));
+    res.json({ success: true, message: "Session timetable cleared.", data });
+}
 
-const getGeneratedTimetable = async (
-    req,
-    res
-) => {
-
-    try {
-
-        const academicSessionId =
-            Number(
-                req.params.academicSessionId
-            );
-
-
-        if (
-            !Number.isInteger(
-                academicSessionId
-            ) ||
-            academicSessionId <= 0
-        ) {
-
-            return res.status(400).json({
-
-                success:
-                    false,
-
-                message:
-                    "Valid AcademicSessionId is required."
-            });
-        }
-
-
-        const result =
-            await timetableGeneratorService
-                .getGeneratedTimetable(
-                    academicSessionId
-                );
-
-
-        return res.status(200).json({
-
-            success:
-                true,
-
-            data:
-                result
-        });
-
-
-    } catch (error) {
-
-        console.error(
-            "GET TIMETABLE ERROR:",
-            error
-        );
-
-
-        return res.status(500).json({
-
-            success:
-                false,
-
-            message:
-                error.message
-        });
-    }
-};
-
-
-// ======================================================
-// DELETE
-// ======================================================
-
-const deleteGeneratedTimetable = async (
-    req,
-    res
-) => {
-
-    try {
-
-        const academicSessionId =
-            Number(
-                req.params.academicSessionId
-            );
-
-
-        if (
-            !Number.isInteger(
-                academicSessionId
-            ) ||
-            academicSessionId <= 0
-        ) {
-
-            return res.status(400).json({
-
-                success:
-                    false,
-
-                message:
-                    "Valid AcademicSessionId is required."
-            });
-        }
-
-
-        const result =
-            await timetableGeneratorService
-                .deleteGeneratedTimetable(
-                    academicSessionId
-                );
-
-
-        return res.status(200).json({
-
-            success:
-                true,
-
-            message:
-                "Timetable deleted successfully.",
-
-            data:
-                result
-        });
-
-
-    } catch (error) {
-
-        console.error(
-            "DELETE TIMETABLE ERROR:",
-            error
-        );
-
-
-        return res.status(500).json({
-
-            success:
-                false,
-
-            message:
-                error.message
-        });
-    }
-};
-
-
-module.exports = {
-
-    generateTimetable,
-
-    getGeneratedTimetable,
-
-    deleteGeneratedTimetable
-};
+module.exports = { generateTimetable, getGeneratedTimetable, deleteGeneratedTimetable };

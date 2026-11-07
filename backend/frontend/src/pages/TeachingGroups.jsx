@@ -11,8 +11,7 @@ import {
 } from "../services/teachingGroupService";
 
 import {
-    getAllTeachingGroupSections,
-    syncTeachingGroupSections
+    getAllTeachingGroupSections
 } from "../services/teachingGroupSectionService";
 
 import {
@@ -598,37 +597,9 @@ function TeachingGroups() {
 
             setSaving(true);
 
-            let groupId;
-
-
-            if (editingId) {
-
-                await updateTeachingGroup(
-                    editingId,
-                    data
-                );
-
-                groupId =
-                    editingId;
-
-            } else {
-
-                const result =
-                    await createTeachingGroup(
-                        data
-                    );
-
-
-                groupId =
-                    result.teachingGroupId;
-            }
-
-
-            await syncTeachingGroupSections(
-                groupId,
-                formData.SectionIds
-            );
-
+            const group = { ...data, SectionIds: formData.SectionIds };
+            if (editingId) await updateTeachingGroup(editingId, group);
+            else await createTeachingGroup(group);
 
             alert(
                 editingId
