@@ -755,7 +755,7 @@ button:disabled {
 }
 
 .tt-cell-block em {
-  color: #7a8699;
+  color: #475569;
   font-size: 8px;
   font-style: normal;
   font-weight: 700;
@@ -2013,4 +2013,30 @@ button:disabled {
   .tt-moving-status {
     display: none !important;
   }
+}
+.tt-preview, .tt-feedback {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #1e293b;
+}
+.tt-feedback-error { border-color: #fca5a5; background: #fff1f2; color: #9f1239; }
+.tt-preview h2 { margin: 0 0 8px; font-size: 1.15rem; }
+.tt-preview-issues { padding-left: 20px; max-height: 260px; overflow: auto; }
+.tt-preview-issues li { margin-bottom: 8px; }
+.tt-preview-table { max-height: 320px; overflow: auto; }
+.tt-preview .tt-generate-btn { margin-top: 12px; }
+.tt-secondary { color: #475569; }
+.tt-hero-copy, .tt-generator-controls > *, .tt-session-field, .tt-search-wrap { min-width: 0; }
+
+@media (max-width: 700px) {
+  .tt-hero, .tt-view-card { flex-wrap: wrap; }
+  .tt-generator-controls, .tt-toolbar { flex-wrap: wrap; }
+  .tt-session-field, .tt-generator-controls select { max-width: 100%; }
+  .tt-report-wrap, .tt-report-table-wrap { max-width: 100%; overflow-x: auto; }
+}
+@media print {
+  .tt-preview, .tt-feedback { display: none !important; }
 }

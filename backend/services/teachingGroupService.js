@@ -1,5 +1,7 @@
 const { sql, poolPromise } =
     require("../config/db");
+const { HttpError } = require("../lib/httpError");
+const { validateMembership, withTeachingGroupLock, writeGroupMembers } = require("./teachingGroupSectionService");
 
 
 // ======================================================
@@ -80,262 +82,58 @@ const getTeachingGroupById = async (id) => {
 // DUPLICATE CHECK
 // ======================================================
 
-const findDuplicateTeachingGroup = async (
-    groupName,
-    campusId,
-    academicSessionId,
-    classYearId,
-    excludeId = null
-) => {
+async function saveGroup(data, id) {
+    return withTeachingGroupLock(async db => {
+        const request = db.request()
+            .input("id", sql.Int, id ?? null)
+            .input("name", sql.NVarChar(100), data.GroupName)
+            .input("campus", sql.Int, data.CampusId)
+            .input("session", sql.Int, data.AcademicSessionId)
+            .input("year", sql.Int, data.ClassYearId)
+            .input("active", sql.Bit, data.IsActive);
 
-    const pool = await poolPromise;
+        let group;
+        try {
+            const { recordset } = await request.query(`
+                IF EXISTS (SELECT 1 FROM TeachingGroups WHERE GroupName = @name
+                    AND CampusId = @campus AND AcademicSessionId = @session AND ClassYearId = @year
+                    AND (@id IS NULL OR TeachingGroupId <> @id))
+                    SELECT 1 AS duplicate;
+                ELSE IF @id IS NULL
+                    INSERT TeachingGroups (GroupName, CampusId, AcademicSessionId, ClassYearId, IsActive)
+                    OUTPUT INSERTED.TeachingGroupId VALUES (@name, @campus, @session, @year, @active);
+                ELSE
+                    UPDATE TeachingGroups SET GroupName = @name, CampusId = @campus, AcademicSessionId = @session,
+                        ClassYearId = @year, IsActive = @active
+                    OUTPUT INSERTED.TeachingGroupId WHERE TeachingGroupId = @id;
+            `);
+            group = recordset[0];
+        } catch (error) {
+            if (error.number === 547) throw new HttpError(400, "The selected campus, academic session or class year does not exist.");
+            throw error;
+        }
+        if (group?.duplicate) throw new HttpError(409, "A teaching group with this name already exists for the selected campus, session and year.");
+        if (!group) throw new HttpError(404, "Teaching group not found.");
 
-    const request = pool.request()
-
-        .input(
-            "GroupName",
-            sql.NVarChar(100),
-            groupName
-        )
-
-        .input(
-            "CampusId",
-            sql.Int,
-            campusId
-        )
-
-        .input(
-            "AcademicSessionId",
-            sql.Int,
-            academicSessionId
-        )
-
-        .input(
-            "ClassYearId",
-            sql.Int,
-            classYearId
-        );
-
-
-    let query = `
-        SELECT TOP 1
-            TeachingGroupId
-        FROM TeachingGroups
-
-        WHERE GroupName = @GroupName
-          AND CampusId = @CampusId
-          AND AcademicSessionId =
-              @AcademicSessionId
-          AND ClassYearId =
-              @ClassYearId
-    `;
-
-
-    if (excludeId !== null) {
-
-        request.input(
-            "ExcludeId",
-            sql.Int,
-            Number(excludeId)
-        );
-
-        query += `
-            AND TeachingGroupId
-                <> @ExcludeId
-        `;
-    }
-
-
-    const result =
-        await request.query(query);
-
-    return result.recordset[0];
-};
-
-
-// ======================================================
-// CREATE
-// ======================================================
-
-const createTeachingGroup = async (data) => {
-
-    const pool = await poolPromise;
-
-    const result = await pool.request()
-
-        .input(
-            "GroupName",
-            sql.NVarChar(100),
-            data.GroupName
-        )
-
-        .input(
-            "CampusId",
-            sql.Int,
-            data.CampusId
-        )
-
-        .input(
-            "AcademicSessionId",
-            sql.Int,
-            data.AcademicSessionId
-        )
-
-        .input(
-            "ClassYearId",
-            sql.Int,
-            data.ClassYearId
-        )
-
-        .input(
-            "IsActive",
-            sql.Bit,
-            data.IsActive
-        )
-
-        .query(`
-            INSERT INTO TeachingGroups
-            (
-                GroupName,
-                CampusId,
-                AcademicSessionId,
-                ClassYearId,
-                IsActive
-            )
-
-            OUTPUT INSERTED.TeachingGroupId
-
-            VALUES
-            (
-                @GroupName,
-                @CampusId,
-                @AcademicSessionId,
-                @ClassYearId,
-                @IsActive
-            );
-        `);
-
-    return result.recordset[0];
-};
-
-
-// ======================================================
-// UPDATE
-// ======================================================
-
-const updateTeachingGroup = async (
-    id,
-    data
-) => {
-
-    const pool = await poolPromise;
-
-    const result = await pool.request()
-
-        .input(
-            "TeachingGroupId",
-            sql.Int,
-            Number(id)
-        )
-
-        .input(
-            "GroupName",
-            sql.NVarChar(100),
-            data.GroupName
-        )
-
-        .input(
-            "CampusId",
-            sql.Int,
-            data.CampusId
-        )
-
-        .input(
-            "AcademicSessionId",
-            sql.Int,
-            data.AcademicSessionId
-        )
-
-        .input(
-            "ClassYearId",
-            sql.Int,
-            data.ClassYearId
-        )
-
-        .input(
-            "IsActive",
-            sql.Bit,
-            data.IsActive
-        )
-
-        .query(`
-            UPDATE TeachingGroups
-
-            SET
-                GroupName = @GroupName,
-                CampusId = @CampusId,
-                AcademicSessionId =
-                    @AcademicSessionId,
-                ClassYearId = @ClassYearId,
-                IsActive = @IsActive
-
-            WHERE
-                TeachingGroupId =
-                @TeachingGroupId
-        `);
-
-    return result.rowsAffected[0];
-};
-
-
-// ======================================================
-// DELETE GROUP + ITS SECTION MAPPINGS
-// ======================================================
+        if (data.SectionIds) {
+            await writeGroupMembers(db, group.TeachingGroupId, data.SectionIds);
+        } else if (id !== undefined && data.IsActive) {
+            const { recordset: members } = await db.request().input("id", sql.Int, id)
+                .query("SELECT SectionId FROM TeachingGroupSections WHERE TeachingGroupId = @id;");
+            await validateMembership(db, id, members.map(member => member.SectionId), data);
+        }
+        return group;
+    });
+}
 
 const deleteTeachingGroup = async (id) => {
-
-    const pool = await poolPromise;
-
-    await pool.request()
-
-        .input(
-            "TeachingGroupId",
-            sql.Int,
-            Number(id)
-        )
-
-        .query(`
-            SET XACT_ABORT ON;
-
-            BEGIN TRY
-
-                BEGIN TRANSACTION;
-
-                DELETE FROM TeachingGroupSections
-                WHERE
-                    TeachingGroupId =
-                    @TeachingGroupId;
-
-                DELETE FROM TeachingGroups
-                WHERE
-                    TeachingGroupId =
-                    @TeachingGroupId;
-
-                COMMIT TRANSACTION;
-
-            END TRY
-
-            BEGIN CATCH
-
-                IF @@TRANCOUNT > 0
-                    ROLLBACK TRANSACTION;
-
-                THROW;
-
-            END CATCH;
+    return withTeachingGroupLock(async db => {
+        await db.request().input("id", sql.Int, id).query(`
+            DELETE FROM TeachingGroupSections WHERE TeachingGroupId = @id;
+            DELETE FROM TeachingGroups WHERE TeachingGroupId = @id;
         `);
+    });
 };
-
 
 // ======================================================
 // DEACTIVATE
@@ -364,18 +162,7 @@ const deactivateTeachingGroup = async (id) => {
 
 
 module.exports = {
-
-    getAllTeachingGroups,
-
-    getTeachingGroupById,
-
-    findDuplicateTeachingGroup,
-
-    createTeachingGroup,
-
-    updateTeachingGroup,
-
-    deleteTeachingGroup,
-
-    deactivateTeachingGroup
+    getAllTeachingGroups, getTeachingGroupById, deleteTeachingGroup, deactivateTeachingGroup,
+    createTeachingGroup: data => saveGroup(data),
+    updateTeachingGroup: (id, data) => saveGroup(data, id)
 };

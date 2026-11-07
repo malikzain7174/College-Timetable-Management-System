@@ -1,5 +1,4 @@
-import axios from "axios";
-import { apiUrl } from "../config/api";
+import { api as axios, apiUrl } from "../config/api";
 
 
 const API_URL = apiUrl("/api/conflicts");

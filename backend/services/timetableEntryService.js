@@ -1,946 +1,152 @@
-const { sql, poolPromise } =
-    require("../config/db");
+const { sql, withDatabaseLock } = require("../config/db");
+const { HttpError, positiveId } = require("../lib/httpError");
+const { listEntries, getSchedulingData } = require("./timetableData");
+const { commonCohort, lectureKey, lectureProblems, placedPeriods } = require("./schedulingConstraints");
 
+const withTimetableLock = (sessionId, operation) => withDatabaseLock(`timetable:session:${sessionId}`, operation);
 
-// ======================================================
-// COMMON SELECT
-// ======================================================
-
-const timetableSelect = `
-    SELECT
-        te.TimetableEntryId,
-        te.SectionSubjectId,
-        te.TeacherId,
-        te.RoomId,
-        te.TimeSlotId,
-        te.AcademicSessionId,
-        te.ClassType,
-        te.Notes,
-        te.CreatedAt,
-        te.UpdatedAt,
-
-        ss.SectionId,
-        ss.SubjectId,
-
-        s.CampusId,
-        s.SectionCode,
-        s.SectionName,
-        s.StudentCount,
-
-        sub.SubjectCode,
-        sub.SubjectName,
-
-        CONCAT(
-            t.FirstName,
-            CASE
-                WHEN t.LastName IS NULL
-                     OR t.LastName = ''
-                THEN ''
-                ELSE ' ' + t.LastName
-            END
-        ) AS TeacherName,
-
-        r.RoomNumber,
-        r.RoomName,
-        r.RoomType,
-        r.Capacity,
-
-        ts.DayOfWeek,
-
-        CONVERT(
-            VARCHAR(8),
-            ts.StartTime,
-            108
-        ) AS StartTime,
-
-        CONVERT(
-            VARCHAR(8),
-            ts.EndTime,
-            108
-        ) AS EndTime,
-
-        ts.SlotName
-
-    FROM TimetableEntries te
-
-    INNER JOIN SectionSubjects ss
-        ON te.SectionSubjectId =
-           ss.SectionSubjectId
-
-    INNER JOIN Sections s
-        ON ss.SectionId =
-           s.SectionId
-
-    INNER JOIN Subjects sub
-        ON ss.SubjectId =
-           sub.SubjectId
-
-    INNER JOIN Teachers t
-        ON te.TeacherId =
-           t.TeacherId
-
-    INNER JOIN Rooms r
-        ON te.RoomId =
-           r.RoomId
-
-    INNER JOIN TimeSlots ts
-        ON te.TimeSlotId =
-           ts.TimeSlotId
-`;
-
-
-// ======================================================
-// GET ALL
-// ======================================================
-
-const getAllTimetableEntries = async () => {
-
-    const pool =
-        await poolPromise;
-
-
-    const result =
-        await pool.request().query(`
-
-            ${timetableSelect}
-
-            ORDER BY
-                te.AcademicSessionId,
-                ts.DayOfWeek,
-                ts.StartTime,
-                s.SectionCode
+async function insertEntries(db, entries) {
+    if (!entries.length) return [];
+    const { recordset } = await db.request()
+        .input("entries", sql.NVarChar(sql.MAX), JSON.stringify(entries))
+        .query(`
+            DECLARE @inserted TABLE (TimetableEntryId int);
+            INSERT dbo.TimetableEntries
+                (SectionSubjectId, TeacherId, RoomId, TimeSlotId, AcademicSessionId, ClassType, Notes, CreatedAt, UpdatedAt)
+            OUTPUT INSERTED.TimetableEntryId INTO @inserted
+            SELECT SectionSubjectId, TeacherId, RoomId, TimeSlotId, AcademicSessionId, ClassType, Notes,
+                SYSUTCDATETIME(), SYSUTCDATETIME()
+            FROM OPENJSON(@entries) WITH (
+                SectionSubjectId int, TeacherId int, RoomId int, TimeSlotId int, AcademicSessionId int,
+                ClassType nvarchar(30), Notes nvarchar(500)
+            );
+            SELECT TimetableEntryId FROM @inserted ORDER BY TimetableEntryId;
         `);
+    return recordset;
+}
 
+async function clearEntries(db, sessionId) {
+    const { rowsAffected } = await db.request().input("id", sql.Int, sessionId)
+        .query("DELETE FROM dbo.TimetableEntries WHERE AcademicSessionId = @id;");
+    return { deletedRows: rowsAffected[0] || 0 };
+}
 
-    return result.recordset;
-};
-
-
-// ======================================================
-// GET BY SESSION
-// ======================================================
-
-const getTimetableEntriesBySession =
-    async (
-        academicSessionId
-    ) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    Number(
-                        academicSessionId
-                    )
-                )
-
-                .query(`
-
-                    ${timetableSelect}
-
-                    WHERE
-                        te.AcademicSessionId =
-                        @AcademicSessionId
-
-                    ORDER BY
-                        ts.DayOfWeek,
-                        ts.StartTime,
-                        s.SectionCode
-                `);
-
-
-        return result.recordset;
+function readEntry(body = {}) {
+    const classType = body.ClassType;
+    if (!["Regular", "Practical", "Common", "Lab"].includes(classType)) {
+        throw new HttpError(400, "Select a valid class type.");
+    }
+    if (body.Notes != null && (typeof body.Notes !== "string" || body.Notes.length > 500)) {
+        throw new HttpError(400, "Notes must be 500 characters or fewer.");
+    }
+    return {
+        SectionSubjectId: positiveId(body.SectionSubjectId, "section subject"),
+        RoomId: positiveId(body.RoomId, "room"),
+        TimeSlotId: positiveId(body.TimeSlotId, "time slot"),
+        AcademicSessionId: positiveId(body.AcademicSessionId, "academic session"),
+        ClassType: classType === "Lab" ? "Practical" : classType,
+        Notes: body.Notes?.trim() || null
     };
-
-
-// ======================================================
-// GET BY ID
-// ======================================================
-
-const getTimetableEntryById =
-    async (id) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "TimetableEntryId",
-                    sql.Int,
-                    Number(id)
-                )
-
-                .query(`
-
-                    ${timetableSelect}
-
-                    WHERE
-                        te.TimetableEntryId =
-                        @TimetableEntryId
-                `);
-
-
-        return result.recordset[0];
-    };
-
-
-// ======================================================
-// SECTION SUBJECT DETAILS
-// ======================================================
-
-const getSectionSubjectDetails =
-    async (id) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "SectionSubjectId",
-                    sql.Int,
-                    Number(id)
-                )
-
-                .query(`
-
-                    SELECT
-                        ss.SectionSubjectId,
-                        ss.SectionId,
-                        ss.SubjectId,
-                        ss.TeacherId,
-                        ss.IsActive,
-
-                        s.CampusId,
-                        s.AcademicSessionId,
-                        s.StudentCount,
-                        s.IsActive
-                            AS SectionIsActive,
-
-                        sub.SubjectCode,
-                        sub.SubjectName
-
-                    FROM SectionSubjects ss
-
-                    INNER JOIN Sections s
-                        ON ss.SectionId =
-                           s.SectionId
-
-                    INNER JOIN Subjects sub
-                        ON ss.SubjectId =
-                           sub.SubjectId
-
-                    WHERE
-                        ss.SectionSubjectId =
-                        @SectionSubjectId
-                `);
-
-
-        return result.recordset[0];
-    };
-
-
-// ======================================================
-// ROOM BY ID
-// ======================================================
-
-const getRoomById =
-    async (id) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "RoomId",
-                    sql.Int,
-                    Number(id)
-                )
-
-                .query(`
-
-                    SELECT
-                        RoomId,
-                        CampusId,
-                        RoomNumber,
-                        RoomName,
-                        RoomType,
-                        Capacity,
-                        IsLab,
-                        IsActive
-
-                    FROM Rooms
-
-                    WHERE
-                        RoomId =
-                        @RoomId
-                `);
-
-
-        return result.recordset[0];
-    };
-
-
-// ======================================================
-// TIME SLOT BY ID
-// ======================================================
-
-const getTimeSlotById =
-    async (id) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "TimeSlotId",
-                    sql.Int,
-                    Number(id)
-                )
-
-                .query(`
-
-                    SELECT
-                        TimeSlotId,
-                        DayOfWeek,
-                        StartTime,
-                        EndTime,
-                        SlotName,
-                        IsActive
-
-                    FROM TimeSlots
-
-                    WHERE
-                        TimeSlotId =
-                        @TimeSlotId
-                `);
-
-
-        return result.recordset[0];
-    };
-
-
-// ======================================================
-// CONFLICT CHECK
-// ======================================================
-
-const checkConflicts =
-    async ({
-        timetableEntryId = null,
-        sectionId,
-        sectionSubjectId,
-        teacherId,
-        roomId,
-        timeSlotId,
-        academicSessionId
-    }) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const slotResult =
-            await pool.request()
-
-                .input(
-                    "TimeSlotId",
-                    sql.Int,
-                    Number(timeSlotId)
-                )
-
-                .query(`
-
-                    SELECT
-                        TimeSlotId,
-                        DayOfWeek
-
-                    FROM TimeSlots
-
-                    WHERE
-                        TimeSlotId =
-                        @TimeSlotId
-                `);
-
-
-        const selectedSlot =
-            slotResult.recordset[0];
-
-
-        if (!selectedSlot) {
-
-            return [
-                {
-                    ConflictType:
-                        "Invalid Time Slot"
-                }
-            ];
+}
+
+function buildLecture(data, entry, previous = []) {
+    const mapping = data.assignments.find(row => row.SectionSubjectId === entry.SectionSubjectId);
+    if (!mapping) throw new HttpError(409, "The subject assignment is not in this academic session.");
+
+    const common = entry.ClassType === "Common";
+    if (previous.length && ((previous[0].ClassType === "Common") !== common)) {
+        throw new HttpError(409, "Create a new lecture to change between shared and individual scheduling.");
+    }
+
+    const mappings = common ? commonCohort(mapping, data.assignments) : [mapping];
+    if (common && mappings.length < 2) {
+        throw new HttpError(409, "A shared lecture needs a matching subject and teacher across an active teaching group.");
+    }
+    const previousByAssignment = new Map(previous.map(row => [row.SectionSubjectId, row.TimetableEntryId]));
+    if (common && previous.length && (
+        mappings.length !== previous.length || mappings.some(row => !previousByAssignment.has(row.SectionSubjectId))
+    )) {
+        throw new HttpError(409, "This shared lecture no longer matches the group. Clear it and schedule the current group.");
+    }
+    const rows = mappings.map(row => ({
+        ...row, ...entry, SectionSubjectId: row.SectionSubjectId,
+        TimetableEntryId: common ? previousByAssignment.get(row.SectionSubjectId) : previous[0]?.TimetableEntryId
+    }));
+    const previousIds = new Set(previous.map(row => row.TimetableEntryId));
+    const others = data.entries.filter(row => !previousIds.has(row.TimetableEntryId));
+    const problems = lectureProblems(rows, others, data);
+    const placed = placedPeriods(others);
+    if (rows.some(row => (placed.get(row.SectionSubjectId) || 0) >= row.WeeklyHours)) {
+        problems.push({ type: "Weekly Demand Conflict", message: "The assignment already has all its weekly periods." });
+    }
+    if (problems.length) throw new HttpError(409, problems.map(problem => problem.message).join(" "), problems);
+    return rows;
+}
+
+async function getTimetableEntryById(id, db) {
+    const [entry] = await listEntries({ entryId: id }, db);
+    if (!entry) throw new HttpError(404, "Timetable entry not found.");
+    return entry;
+}
+
+async function createTimetableEntry(body) {
+    const entry = readEntry(body);
+    return withTimetableLock(entry.AcademicSessionId, async db => {
+        const data = await getSchedulingData(entry.AcademicSessionId, db);
+        const inserted = await insertEntries(db, buildLecture(data, entry));
+        return {
+            data: await getTimetableEntryById(inserted[0].TimetableEntryId, db),
+            affectedRows: inserted.length
+        };
+    });
+}
+
+async function withExistingLecture(id, operation) {
+    const initial = await getTimetableEntryById(id);
+    return withTimetableLock(initial.AcademicSessionId, async db => {
+        const data = await getSchedulingData(initial.AcademicSessionId, db);
+        const selected = data.entries.find(row => row.TimetableEntryId === id);
+        if (!selected) throw new HttpError(404, "Timetable entry not found.");
+        const key = lectureKey(selected);
+        return operation(db, data, data.entries.filter(row => lectureKey(row) === key));
+    });
+}
+
+async function updateTimetableEntry(id, body) {
+    const entry = readEntry(body);
+    return withExistingLecture(id, async (db, data, previous) => {
+        if (entry.AcademicSessionId !== data.session.AcademicSessionId) {
+            throw new HttpError(409, "An existing lesson cannot be moved to another academic session.");
         }
-
-
-        const request =
-            pool.request()
-
-                .input(
-                    "SectionId",
-                    sql.Int,
-                    Number(sectionId)
-                )
-
-                .input(
-                    "SectionSubjectId",
-                    sql.Int,
-                    Number(sectionSubjectId)
-                )
-
-                .input(
-                    "TeacherId",
-                    sql.Int,
-                    Number(teacherId)
-                )
-
-                .input(
-                    "RoomId",
-                    sql.Int,
-                    Number(roomId)
-                )
-
-                .input(
-                    "TimeSlotId",
-                    sql.Int,
-                    Number(timeSlotId)
-                )
-
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    Number(
-                        academicSessionId
-                    )
-                );
-
-
-        let excludeClause = "";
-
-
-        if (
-            timetableEntryId !== null
-        ) {
-
-            request.input(
-                "TimetableEntryId",
-                sql.Int,
-                Number(
-                    timetableEntryId
-                )
-            );
-
-
-            excludeClause = `
-                AND te.TimetableEntryId
-                    <> @TimetableEntryId
-            `;
-        }
-
-
-        const result =
-            await request.query(`
-
-                SELECT
-                    'Teacher'
-                        AS ConflictType,
-
-                    te.TimetableEntryId
-
-                FROM TimetableEntries te
-
-                WHERE
-                    te.TeacherId =
-                        @TeacherId
-
-                    AND te.TimeSlotId =
-                        @TimeSlotId
-
-                    AND te.AcademicSessionId =
-                        @AcademicSessionId
-
-                    ${excludeClause}
-
-
-                UNION ALL
-
-
-                SELECT
-                    'Room'
-                        AS ConflictType,
-
-                    te.TimetableEntryId
-
-                FROM TimetableEntries te
-
-                WHERE
-                    te.RoomId =
-                        @RoomId
-
-                    AND te.TimeSlotId =
-                        @TimeSlotId
-
-                    AND te.AcademicSessionId =
-                        @AcademicSessionId
-
-                    ${excludeClause}
-
-
-                UNION ALL
-
-
-                SELECT
-                    'Section'
-                        AS ConflictType,
-
-                    te.TimetableEntryId
-
-                FROM TimetableEntries te
-
-                INNER JOIN SectionSubjects otherSS
-                    ON otherSS.SectionSubjectId =
-                       te.SectionSubjectId
-
-                WHERE
-                    otherSS.SectionId =
-                        @SectionId
-
-                    AND te.TimeSlotId =
-                        @TimeSlotId
-
-                    AND te.AcademicSessionId =
-                        @AcademicSessionId
-
-                    ${excludeClause}
-
-
-                UNION ALL
-
-
-                SELECT
-                    'Duplicate'
-                        AS ConflictType,
-
-                    te.TimetableEntryId
-
-                FROM TimetableEntries te
-
-                WHERE
-                    te.SectionSubjectId =
-                        @SectionSubjectId
-
-                    AND te.TimeSlotId =
-                        @TimeSlotId
-
-                    AND te.AcademicSessionId =
-                        @AcademicSessionId
-
-                    ${excludeClause}
-            `);
-
-
-        const conflicts =
-            [
-                ...result.recordset
-            ];
-
-
-        // ==================================================
-        // TEACHER DAILY LIMIT
-        // Maximum 5 lectures per day
-        // ==================================================
-
-        const dailyRequest =
-            pool.request()
-
-                .input(
-                    "TeacherId",
-                    sql.Int,
-                    Number(teacherId)
-                )
-
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    Number(
-                        academicSessionId
-                    )
-                )
-
-                .input(
-                    "DayOfWeek",
-                    sql.Int,
-                    Number(
-                        selectedSlot
-                            .DayOfWeek
-                    )
-                );
-
-
-        let dailyExclude = "";
-
-
-        if (
-            timetableEntryId !== null
-        ) {
-
-            dailyRequest.input(
-                "TimetableEntryId",
-                sql.Int,
-                Number(
-                    timetableEntryId
-                )
-            );
-
-
-            dailyExclude = `
-                AND te.TimetableEntryId
-                    <> @TimetableEntryId
-            `;
-        }
-
-
-        const dailyResult =
-            await dailyRequest.query(`
-
-                SELECT
-
-                    COUNT(*)
-                        AS LectureCount
-
-                FROM TimetableEntries te
-
-                INNER JOIN TimeSlots ts
-                    ON ts.TimeSlotId =
-                       te.TimeSlotId
-
-                WHERE
-
-                    te.TeacherId =
-                        @TeacherId
-
-                    AND te.AcademicSessionId =
-                        @AcademicSessionId
-
-                    AND ts.DayOfWeek =
-                        @DayOfWeek
-
-                    ${dailyExclude}
-            `);
-
-
-        const lectureCount =
-            Number(
-                dailyResult
-                    .recordset[0]
-                    ?.LectureCount || 0
-            );
-
-
-        if (
-            lectureCount >= 5
-        ) {
-
-            conflicts.push({
-
-                ConflictType:
-                    "Teacher Daily Limit",
-
-                LectureCount:
-                    lectureCount,
-
-                MaximumAllowed:
-                    5
-            });
-        }
-
-
-        return conflicts;
-    };
-
-
-// ======================================================
-// CREATE
-// ======================================================
-
-const createTimetableEntry =
-    async (data) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "SectionSubjectId",
-                    sql.Int,
-                    data.SectionSubjectId
-                )
-
-                .input(
-                    "TeacherId",
-                    sql.Int,
-                    data.TeacherId
-                )
-
-                .input(
-                    "RoomId",
-                    sql.Int,
-                    data.RoomId
-                )
-
-                .input(
-                    "TimeSlotId",
-                    sql.Int,
-                    data.TimeSlotId
-                )
-
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    data.AcademicSessionId
-                )
-
-                .input(
-                    "ClassType",
-                    sql.NVarChar(30),
-                    data.ClassType
-                )
-
-                .input(
-                    "Notes",
-                    sql.NVarChar(500),
-                    data.Notes || null
-                )
-
-                .query(`
-
-                    INSERT INTO TimetableEntries
-                    (
-                        SectionSubjectId,
-                        TeacherId,
-                        RoomId,
-                        TimeSlotId,
-                        AcademicSessionId,
-                        ClassType,
-                        Notes,
-                        CreatedAt,
-                        UpdatedAt
-                    )
-
-                    OUTPUT
-                        INSERTED.TimetableEntryId
-
-                    VALUES
-                    (
-                        @SectionSubjectId,
-                        @TeacherId,
-                        @RoomId,
-                        @TimeSlotId,
-                        @AcademicSessionId,
-                        @ClassType,
-                        @Notes,
-                        SYSDATETIME(),
-                        SYSDATETIME()
-                    );
-                `);
-
-
-        return result.recordset[0];
-    };
-
-
-// ======================================================
-// UPDATE
-// ======================================================
-
-const updateTimetableEntry =
-    async (
-        id,
-        data
-    ) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "TimetableEntryId",
-                    sql.Int,
-                    Number(id)
-                )
-
-                .input(
-                    "SectionSubjectId",
-                    sql.Int,
-                    data.SectionSubjectId
-                )
-
-                .input(
-                    "TeacherId",
-                    sql.Int,
-                    data.TeacherId
-                )
-
-                .input(
-                    "RoomId",
-                    sql.Int,
-                    data.RoomId
-                )
-
-                .input(
-                    "TimeSlotId",
-                    sql.Int,
-                    data.TimeSlotId
-                )
-
-                .input(
-                    "AcademicSessionId",
-                    sql.Int,
-                    data.AcademicSessionId
-                )
-
-                .input(
-                    "ClassType",
-                    sql.NVarChar(30),
-                    data.ClassType
-                )
-
-                .input(
-                    "Notes",
-                    sql.NVarChar(500),
-                    data.Notes || null
-                )
-
-                .query(`
-
-                    UPDATE TimetableEntries
-
-                    SET
-                        SectionSubjectId =
-                            @SectionSubjectId,
-
-                        TeacherId =
-                            @TeacherId,
-
-                        RoomId =
-                            @RoomId,
-
-                        TimeSlotId =
-                            @TimeSlotId,
-
-                        AcademicSessionId =
-                            @AcademicSessionId,
-
-                        ClassType =
-                            @ClassType,
-
-                        Notes =
-                            @Notes,
-
-                        UpdatedAt =
-                            SYSDATETIME()
-
-                    WHERE
-                        TimetableEntryId =
-                        @TimetableEntryId
-                `);
-
-
-        return (
-            result.rowsAffected[0] ||
-            0
-        );
-    };
-
-
-// ======================================================
-// DELETE
-// ======================================================
-
-const deleteTimetableEntry =
-    async (id) => {
-
-        const pool =
-            await poolPromise;
-
-
-        const result =
-            await pool.request()
-
-                .input(
-                    "TimetableEntryId",
-                    sql.Int,
-                    Number(id)
-                )
-
-                .query(`
-
-                    DELETE
-                    FROM TimetableEntries
-
-                    WHERE
-                        TimetableEntryId =
-                        @TimetableEntryId
-                `);
-
-
-        return (
-            result.rowsAffected[0] ||
-            0
-        );
-    };
-
-
-// ======================================================
-// EXPORTS
-// ======================================================
+        const changes = buildLecture(data, entry, previous);
+        const result = await db.request().input("entries", sql.NVarChar(sql.MAX), JSON.stringify(changes)).query(`
+            UPDATE te
+            SET SectionSubjectId = nextRow.SectionSubjectId, TeacherId = nextRow.TeacherId,
+                RoomId = nextRow.RoomId, TimeSlotId = nextRow.TimeSlotId, ClassType = nextRow.ClassType,
+                Notes = nextRow.Notes, UpdatedAt = SYSUTCDATETIME()
+            FROM dbo.TimetableEntries te
+            JOIN OPENJSON(@entries) WITH (
+                TimetableEntryId int, SectionSubjectId int, TeacherId int, RoomId int, TimeSlotId int,
+                ClassType nvarchar(30), Notes nvarchar(500)
+            ) nextRow ON nextRow.TimetableEntryId = te.TimetableEntryId;
+        `);
+        return { data: await getTimetableEntryById(id, db), affectedRows: result.rowsAffected[0] };
+    });
+}
+
+async function deleteTimetableEntry(id) {
+    return withExistingLecture(id, async (db, data, previous) => {
+        const ids = previous.map(row => row.TimetableEntryId);
+        const result = await db.request().input("ids", sql.NVarChar(sql.MAX), JSON.stringify(ids))
+            .query("DELETE FROM dbo.TimetableEntries WHERE TimetableEntryId IN (SELECT CONVERT(int, value) FROM OPENJSON(@ids));");
+        return result.rowsAffected[0];
+    });
+}
 
 module.exports = {
-
-    getAllTimetableEntries,
-
-    getTimetableEntriesBySession,
-
-    getTimetableEntryById,
-
-    getSectionSubjectDetails,
-
-    getRoomById,
-
-    getTimeSlotById,
-
-    checkConflicts,
-
-    createTimetableEntry,
-
-    updateTimetableEntry,
-
-    deleteTimetableEntry
+    clearEntries, createTimetableEntry, deleteTimetableEntry, getTimetableEntryById, insertEntries,
+    getAllTimetableEntries: () => listEntries(),
+    getTimetableEntriesBySession: sessionId => listEntries({ sessionId }),
+    getTimetableForTeacher: teacherId => listEntries({ teacherId }),
+    updateTimetableEntry, withTimetableLock
 };

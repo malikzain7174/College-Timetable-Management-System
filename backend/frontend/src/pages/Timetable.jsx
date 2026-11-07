@@ -12,7 +12,8 @@ import {
 
 } from "react";
 
-import { getAllSections } from "../services/sectionService";
+import { Link } from "react-router-dom";
+import { getAllSections, getSectionLookups } from "../services/sectionService";
 
 import { getAllSectionSubjects } from "../services/sectionSubjectService";
 
@@ -131,7 +132,15 @@ function Timetable() {
 
   const [timeSlots, setTimeSlots] = useState([]);
 
-  const [entries, setEntries] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [baseRevision, setBaseRevision] = useState(0);
+  const [baseError, setBaseError] = useState("");
+  const [sessionRevision, setSessionRevision] = useState(0);
+  const [sessionResult, setSessionResult] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [operationError, setOperationError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
 
 
@@ -153,8 +162,6 @@ function Timetable() {
 
   const [loading, setLoading] = useState(true);
 
-  const [sessionLoading, setSessionLoading] = useState(true);
-
   const [generating, setGenerating] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
@@ -163,7 +170,7 @@ function Timetable() {
 
   const [saving, setSaving] = useState(false);
 
-  const [clearExisting, setClearExisting] = useState(true);
+  const [clearExisting, setClearExisting] = useState(false);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
 
@@ -177,165 +184,60 @@ function Timetable() {
 
 
 
+  const sessionReady = sessionResult?.id === selectedSession && sessionResult.revision === sessionRevision;
+  const entries = useMemo(() => sessionReady ? sessionResult.entries : [], [sessionReady, sessionResult]);
+  const sessionError = sessionReady ? sessionResult.error : "";
+  const sessionLoading = Boolean(selectedSession) && !sessionReady;
+  const busy = generating || saving || deleting || movingEntry;
+  const editingShared = entries.some(entry => entry.TimetableEntryId === editingId && entry.ClassType === "Common");
+
   useEffect(() => {
-
     let cancelled = false;
-
-
-
-    (async () => {
-
+    async function load() {
       try {
-
-        const [sectionData, mappingData, roomData, slotData] = await Promise.all([
-
-          getAllSections(),
-
-          getAllSectionSubjects(),
-
-          getAllRooms(),
-
-          getAllTimeSlots()
-
+        const [sectionData, mappingData, roomData, slotData, lookups] = await Promise.all([
+          getAllSections(), getAllSectionSubjects(), getAllRooms(), getAllTimeSlots(), getSectionLookups()
         ]);
-
-
-
         if (cancelled) return;
-
-
-
-        const safeSections = asArray(sectionData);
-
-        setSections(safeSections);
-
+        const academicSessions = asArray(lookups.academicSessions);
+        const fallback = academicSessions.find(session => session.IsCurrent) || academicSessions[0];
+        setSections(asArray(sectionData));
         setSectionSubjects(asArray(mappingData));
-
         setRooms(asArray(roomData));
-
         setTimeSlots(asArray(slotData));
-
-
-
-        const sessions = [...new Set(
-
-          safeSections
-
-            .map((s) => Number(s.AcademicSessionId))
-
-            .filter((id) => Number.isInteger(id) && id > 0)
-
-        )].sort((a, b) => a - b);
-
-
-
-        if (sessions.length) setSelectedSession(String(sessions[0]));
-
+        setSessions(academicSessions);
+        setSelectedSession(current => academicSessions.some(session => String(session.AcademicSessionId) === current)
+          ? current : String(fallback?.AcademicSessionId || ""));
+        setBaseError("");
       } catch (error) {
-
-        console.error("Load timetable base data error:", error);
-
-        alert(error.response?.data?.message || "Failed to load timetable data.");
-
+        if (!cancelled) setBaseError(error.response?.data?.message || "Unable to load timetable setup.");
       } finally {
-
         if (!cancelled) setLoading(false);
-
       }
-
-    })();
-
-
-
-    return () => {
-
-      cancelled = true;
-
-    };
-
-  }, []);
-
-
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [baseRevision]);
 
   useEffect(() => {
-
-    if (!selectedSession) return undefined;
-
-
-
+    if (!selectedSession) return;
     let cancelled = false;
-
-
-
-    (async () => {
-
-      try {
-
-        const data = await getTimetableEntriesBySession(Number(selectedSession));
-
-        if (!cancelled) setEntries(asArray(data));
-
-      } catch (error) {
-
-        if (!cancelled) {
-
-          console.error("Load session timetable error:", error);
-
-          setEntries([]);
-
-        }
-
-      } finally {
-
-        if (!cancelled) setSessionLoading(false);
-
-      }
-
-    })();
-
-
-
-    return () => {
-
-      cancelled = true;
-
-    };
-
-  }, [selectedSession]);
-
-
-
-  const sessionOptions = useMemo(() => {
-
-    const map = new Map();
-
-
-
-    sections.forEach((section) => {
-
-      const id = Number(section.AcademicSessionId);
-
-      if (!Number.isInteger(id) || id <= 0 || map.has(id)) return;
-
-
-
-      map.set(id, {
-
-        id,
-
-        name: section.SessionName || `Academic Session ${id}`
-
+    getTimetableEntriesBySession(Number(selectedSession))
+      .then(data => {
+        if (!cancelled) setSessionResult({ id: selectedSession, revision: sessionRevision, entries: asArray(data), error: "" });
+      })
+      .catch(error => {
+        if (!cancelled) setSessionResult({
+          id: selectedSession, revision: sessionRevision, entries: [],
+          error: error.response?.data?.message || "Unable to load the selected timetable."
+        });
       });
+    return () => { cancelled = true; };
+  }, [selectedSession, sessionRevision]);
 
-    });
-
-
-
-    return [...map.values()].sort((a, b) => a.id - b.id);
-
-  }, [sections]);
-
-
+  const sessionOptions = useMemo(() => sessions.map(session => ({
+    id: session.AcademicSessionId, name: session.SessionName
+  })), [sessions]);
 
   const sessionName = useMemo(
 
@@ -1087,57 +989,23 @@ function Timetable() {
 
 
 
-  const refreshTimetable = async () => {
-
-    if (!selectedSession) return;
-
-
-
-    setSessionLoading(true);
-
-
-
-    try {
-
-      const data = await getTimetableEntriesBySession(Number(selectedSession));
-
-      setEntries(asArray(data));
-
-    } finally {
-
-      setSessionLoading(false);
-
-    }
-
-  };
-
-
+  const refreshTimetable = () => setSessionRevision(value => value + 1);
 
   const handleSessionChange = (event) => {
-
-    setSessionLoading(true);
-
+    if (busy) return;
     setSelectedSession(event.target.value);
-
+    setPreview(null);
+    setOperationError("");
+    setNotice("");
     setSearch("");
-
     setDayFilter("");
-
     setReportSearch("");
-
     setCampusFilter("");
-
     setYearFilter("");
-
     setShowForm(false);
-
     setEditingId(null);
-
     setFormData(EMPTY_FORM);
-
   };
-
-
 
   const handleChange = (event) => {
 
@@ -1294,6 +1162,9 @@ function Timetable() {
     try {
 
       setSaving(true);
+      setOperationError("");
+      setNotice("");
+      setPreview(null);
 
 
 
@@ -1301,13 +1172,13 @@ function Timetable() {
 
         await updateTimetableEntry(editingId, payload);
 
-        alert("Timetable entry updated successfully.");
+        setNotice("Timetable entry updated.");
 
       } else {
 
         await createTimetableEntry(payload);
 
-        alert("Timetable entry added successfully.");
+        setNotice("Timetable entry added.");
 
       }
 
@@ -1315,13 +1186,13 @@ function Timetable() {
 
       resetForm();
 
-      await refreshTimetable();
+      refreshTimetable();
 
     } catch (error) {
 
       console.error("Save timetable error:", error);
 
-      alert(error.response?.data?.message || "Failed to save timetable entry.");
+      setOperationError(error.response?.data?.message || "Failed to save timetable entry.");
 
     } finally {
 
@@ -1333,132 +1204,74 @@ function Timetable() {
 
 
 
-  const handleDeleteEntry = async (id) => {
-
-    if (!window.confirm("Delete this timetable entry?")) return;
-
-
-
+  const handleDeleteEntry = async entry => {
+    const shared = entry.ClassType === "Common";
+    if (!window.confirm(shared ? "Remove this shared lecture for all its sections?" : "Remove this timetable entry?")) return;
     try {
-
-      await deleteTimetableEntry(id);
-
-      await refreshTimetable();
-
+      setDeleting(true);
+      setOperationError("");
+      setPreview(null);
+      await deleteTimetableEntry(entry.TimetableEntryId);
+      setNotice(shared ? "Shared lecture removed." : "Timetable entry removed.");
+      refreshTimetable();
     } catch (error) {
-
-      alert(error.response?.data?.message || "Failed to delete entry.");
-
+      setOperationError(error.response?.data?.message || "Failed to remove the entry.");
+    } finally {
+      setDeleting(false);
     }
-
   };
-
-
 
   const handleGenerate = async () => {
-
-    if (!selectedSession) {
-
-      alert("Select Academic Session first.");
-
-      return;
-
-    }
-
-
-
-    if (
-
-      clearExisting &&
-
-      entries.length > 0 &&
-
-      !window.confirm("Existing timetable for this session will be replaced. Continue?")
-
-    ) {
-
-      return;
-
-    }
-
-
-
+    if (!selectedSession || busy) return;
     try {
-
       setGenerating(true);
-
-
-
-      const result = await generateTimetable(
-
-        Number(selectedSession),
-
-        clearExisting
-
-      );
-
-
-
-      const info = result.data;
-
-
-
-      await refreshTimetable();
-
-      setViewMode("class");
-
-
-
-      alert(
-
-        `Timetable generated successfully.\nEntries: ${info.totalGenerated}\nUnscheduled tasks: ${info.unscheduledCount}\n\nClass Wise report is ready.`
-
-      );
-
+      setOperationError("");
+      setNotice("");
+      setPreview(null);
+      const { data } = await generateTimetable(Number(selectedSession), clearExisting, { previewOnly: true });
+      setPreview(data);
     } catch (error) {
-
-      console.error("Generate timetable error:", error);
-
-      alert(error.response?.data?.message || "Failed to generate timetable.");
-
+      setOperationError(error.response?.data?.message || "Unable to preview this timetable.");
     } finally {
-
       setGenerating(false);
-
     }
-
   };
 
-
+  const handleApply = async () => {
+    if (!preview?.isValid || busy) return;
+    if (clearExisting && entries.length && !window.confirm(`Replace the saved timetable for ${sessionName}?`)) return;
+    try {
+      setGenerating(true);
+      setOperationError("");
+      await generateTimetable(Number(selectedSession), clearExisting, { previewFingerprint: preview.previewFingerprint });
+      setNotice(`Timetable saved for ${sessionName}.`);
+      setPreview(null);
+      refreshTimetable();
+      setViewMode("class");
+    } catch (error) {
+      setOperationError(error.response?.data?.message || "Unable to save the timetable.");
+      setPreview(null);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleDeleteAll = async () => {
-
-    if (!selectedSession || entries.length === 0) return;
-
-
-
-    if (!window.confirm("Delete the complete timetable for this Academic Session?")) {
-
-      return;
-
-    }
-
-
-
+    if (!selectedSession || busy || entries.length === 0) return;
+    if (!window.confirm(`Clear the saved timetable for ${sessionName}?`)) return;
     try {
-
+      setDeleting(true);
+      setOperationError("");
+      setPreview(null);
       await deleteGeneratedTimetable(Number(selectedSession));
-
-      setEntries([]);
-
+      refreshTimetable();
       setViewMode("list");
-
+      setNotice(`Timetable cleared for ${sessionName}.`);
     } catch (error) {
-
-      alert(error.response?.data?.message || "Failed to delete timetable.");
-
+      setOperationError(error.response?.data?.message || "Failed to clear the timetable.");
+    } finally {
+      setDeleting(false);
     }
-
   };
 
  const getSlotForDayAndPeriod = useCallback(
@@ -1506,30 +1319,6 @@ const handleDragStart = (event, entry) => {
   if (!editTimetableMode || movingEntry) {
 
     event.preventDefault();
-
-    return;
-
-  }
-
-
-
-  if (entry.ClassType === "Common") {
-
-    event.preventDefault();
-
-
-
-    setMoveMessage({
-
-      type: "error",
-
-      text:
-
-        "Common Teaching Group lecture ko is version mein individual drag nahi kar sakte. Common lecture ko ek group ke taur par move karna zaroori hai."
-
-    });
-
-
 
     return;
 
@@ -1670,28 +1459,6 @@ const handleDrop = async (
       type: "error",
 
       text: "Dragged timetable entry nahi mili."
-
-    });
-
-
-
-    setDraggedEntryId(null);
-
-    return;
-
-  }
-
-
-
-  if (sourceEntry.ClassType === "Common") {
-
-    setMoveMessage({
-
-      type: "error",
-
-      text:
-
-        "Common lecture ko individual row ke taur par move nahi kiya ja sakta."
 
     });
 
@@ -1878,6 +1645,7 @@ const handleDrop = async (
   try {
 
     setMovingEntry(true);
+    setPreview(null);
 
     setMoveMessage(null);
 
@@ -1893,7 +1661,7 @@ const handleDrop = async (
 
 
 
-    await refreshTimetable();
+    refreshTimetable();
 
 
 
@@ -2103,7 +1871,7 @@ const handleDrop = async (
 
             onClick={refreshTimetable}
 
-            disabled={!selectedSession || sessionLoading}
+            disabled={!selectedSession || sessionLoading || busy}
 
           >
 
@@ -2113,7 +1881,7 @@ const handleDrop = async (
 
 
 
-          <button type="button" className="tt-add-btn" onClick={handleAdd}>
+          <button type="button" className="tt-add-btn" onClick={handleAdd} disabled={!selectedSession || busy || loading || !!baseError}>
 
             + Manual Entry
 
@@ -2179,7 +1947,7 @@ const handleDrop = async (
 
           <span className={entries.length ? "tt-ready-pill ready" : "tt-ready-pill"}>
 
-            {entries.length ? "● Timetable Ready" : "○ No Timetable"}
+            {entries.length ? "Saved timetable" : "No timetable saved"}
 
           </span>
 
@@ -2191,11 +1959,11 @@ const handleDrop = async (
 
           <div className="tt-field tt-session-field">
 
-            <label>Academic Session</label>
+            <label htmlFor="tt-session">Academic Session</label>
 
 
 
-            <select value={selectedSession} onChange={handleSessionChange}>
+            <select id="tt-session" value={selectedSession} onChange={handleSessionChange} disabled={busy || loading}>
 
               <option value="">Select Academic Session</option>
 
@@ -2223,7 +1991,8 @@ const handleDrop = async (
 
               checked={clearExisting}
 
-              onChange={(event) => setClearExisting(event.target.checked)}
+              disabled={busy || !selectedSession}
+              onChange={(event) => { setClearExisting(event.target.checked); setPreview(null); }}
 
             />
 
@@ -2241,11 +2010,11 @@ const handleDrop = async (
 
             onClick={handleGenerate}
 
-            disabled={generating || !selectedSession}
+            disabled={busy || loading || sessionLoading || !selectedSession || !!baseError || !!sessionError}
 
           >
 
-            {generating ? "Generating..." : "⚡ Generate Timetable"}
+            {generating ? "Working…" : "Preview Timetable"}
 
           </button>
 
@@ -2259,11 +2028,11 @@ const handleDrop = async (
 
             onClick={handleDeleteAll}
 
-            disabled={entries.length === 0}
+            disabled={busy || entries.length === 0}
 
           >
 
-            Delete Session
+            Clear Timetable
 
           </button>
 
@@ -2274,6 +2043,49 @@ const handleDrop = async (
 
 
 
+
+      {baseError && <div className="tt-feedback tt-feedback-error" role="alert">
+        {baseError} <button type="button" onClick={() => { setLoading(true); setBaseRevision(value => value + 1); }}>Retry setup</button>
+      </div>}
+      {sessionError && <div className="tt-feedback tt-feedback-error" role="alert">
+        {sessionError} <button type="button" onClick={refreshTimetable}>Retry timetable</button>
+      </div>}
+      {operationError && <p className="tt-feedback tt-feedback-error" role="alert">{operationError}</p>}
+      {notice && <p className="tt-feedback" role="status">{notice}</p>}
+      {preview && (
+        <section className="tt-preview" aria-labelledby="tt-preview-title">
+          <h2 id="tt-preview-title">Timetable preview for {sessionName}</h2>
+          <p role="status">{preview.isValid
+            ? `Ready to save. ${preview.totalGenerated} new timetable rows.`
+            : `Review required. ${preview.missingAssignments.length} incomplete assignments and ${preview.totalConflicts} conflicts.`}</p>
+          {preview.missingAssignments.length > 0 && <ul className="tt-preview-issues">
+            {preview.missingAssignments.map(item => <li key={item.sectionSubjectId}>
+              <strong>{item.sectionCode} · {item.subjectName}</strong> · {item.scheduledHours} of {item.requiredHours} periods.
+              {" "}{item.reason}
+            </li>)}
+          </ul>}
+          {preview.conflicts.length > 0 && <ul className="tt-preview-issues">
+            {preview.conflicts.map((item, index) => <li key={index}>
+              <strong>{item.type}</strong> · {item.sectionCode || item.teacherName || "Timetable"}. {item.message}
+            </li>)}
+          </ul>}
+          {preview.entries.length > 0 && <details>
+            <summary>Review {preview.entries.length} proposed rows</summary>
+            <div className="tt-table-wrapper tt-preview-table">
+              <table>
+                <thead><tr><th>Section</th><th>Subject</th><th>Teacher</th><th>Day</th><th>Time</th><th>Room</th></tr></thead>
+                <tbody>{preview.entries.map(entry => <tr key={`${entry.SectionSubjectId}-${entry.TimeSlotId}`}>
+                  <td>{entry.SectionCode}</td><td>{entry.SubjectName}</td><td>{entry.TeacherName}</td>
+                  <td>{DAYS[entry.DayOfWeek]}</td><td>{formatTime(entry.StartTime)}</td><td>{entry.RoomNumber}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+          </details>}
+          <button type="button" className="tt-generate-btn" onClick={handleApply} disabled={busy || !preview.isValid}>
+            Save Timetable
+          </button>
+        </section>
+      )}
 
       {showForm && (
 
@@ -2286,12 +2098,13 @@ const handleDrop = async (
               <span className="tt-card-kicker">Manual Scheduling</span>
 
               <h2>{editingId ? "Edit Timetable Entry" : "Add Timetable Entry"}</h2>
+              {editingShared && <p>Changes apply to every section in this shared lecture.</p>}
 
             </div>
 
 
 
-            <button type="button" className="tt-close-btn" onClick={resetForm}>
+            <button type="button" className="tt-close-btn" aria-label="Close manual entry form" onClick={resetForm}>
 
               ×
 
@@ -2307,13 +2120,16 @@ const handleDrop = async (
 
               <div className="tt-field">
 
-                <label>Section Subject *</label>
+                <label htmlFor="tt-SectionSubjectId">Section Subject *</label>
 
 
 
                 <select
 
+                  id="tt-SectionSubjectId"
                   name="SectionSubjectId"
+                  disabled={editingShared}
+                  required
 
                   value={formData.SectionSubjectId}
 
@@ -2359,13 +2175,15 @@ const handleDrop = async (
 
               <div className="tt-field">
 
-                <label>Room *</label>
+                <label htmlFor="tt-RoomId">Room *</label>
 
 
 
                 <select
 
+                  id="tt-RoomId"
                   name="RoomId"
+                  required
 
                   value={formData.RoomId}
 
@@ -2397,13 +2215,15 @@ const handleDrop = async (
 
               <div className="tt-field">
 
-                <label>Time Slot *</label>
+                <label htmlFor="tt-TimeSlotId">Time Slot *</label>
 
 
 
                 <select
 
+                  id="tt-TimeSlotId"
                   name="TimeSlotId"
+                  required
 
                   value={formData.TimeSlotId}
 
@@ -2455,13 +2275,15 @@ const handleDrop = async (
 
               <div className="tt-field">
 
-                <label>Class Type *</label>
+                <label htmlFor="tt-ClassType">Class Type *</label>
 
 
 
                 <select
 
+                  id="tt-ClassType"
                   name="ClassType"
+                  disabled={editingShared}
 
                   value={formData.ClassType}
 
@@ -2473,7 +2295,7 @@ const handleDrop = async (
 
                   <option value="Practical">Practical</option>
 
-                  <option value="Common">Common</option>
+                  <option value="Common" disabled={!!editingId && !editingShared}>Shared lecture</option>
 
                 </select>
 
@@ -2483,10 +2305,11 @@ const handleDrop = async (
 
               <div className="tt-field tt-notes">
 
-                <label>Notes</label>
+                <label htmlFor="tt-Notes">Notes</label>
 
                 <textarea
 
+                  id="tt-Notes"
                   name="Notes"
 
                   maxLength={500}
@@ -2515,7 +2338,7 @@ const handleDrop = async (
 
 
 
-              <button type="submit" className="tt-save-btn" disabled={saving}>
+              <button type="submit" className="tt-save-btn" disabled={busy}>
 
                 {saving ? "Saving..." : editingId ? "Update Entry" : "Save Entry"}
 
@@ -2613,7 +2436,7 @@ const handleDrop = async (
 
 
 
-      {viewMode === "list" && (
+      {viewMode === "list" && !baseError && !sessionError && (
 
         <>
 
@@ -2631,6 +2454,7 @@ const handleDrop = async (
 
                 onChange={(event) => setSearch(event.target.value)}
 
+                aria-label="Search timetable entries"
                 placeholder="Search section, subject, teacher or room..."
 
               />
@@ -2639,7 +2463,7 @@ const handleDrop = async (
 
 
 
-            <select value={dayFilter} onChange={(event) => setDayFilter(event.target.value)}>
+            <select aria-label="Filter by day" value={dayFilter} onChange={(event) => setDayFilter(event.target.value)}>
 
               <option value="">All Days</option>
 
@@ -2671,7 +2495,7 @@ const handleDrop = async (
 
             {loading || sessionLoading ? (
 
-              <div className="tt-message">
+              <div className="tt-message" role="status">
 
                 <div className="tt-loader" />
 
@@ -2679,15 +2503,19 @@ const handleDrop = async (
 
               </div>
 
+            ) : !selectedSession ? (
+              <div className="tt-message"><h3>Select an academic session</h3>
+                {!sessionOptions.length && <p><Link to="/sections">Create a session in Sections</Link> to begin.</p>}
+              </div>
             ) : filteredEntries.length === 0 ? (
 
               <div className="tt-message">
 
                 <div className="tt-empty-icon">📅</div>
 
-                <h3>No Timetable Entries</h3>
+                <h3>{entries.length ? "No entries match your filters" : "No Timetable Entries"}</h3>
 
-                <p>Generate the timetable or add an entry manually.</p>
+                <p>{entries.length ? "Try another search or day." : "Preview a timetable or add an entry manually."}</p>
 
               </div>
 
@@ -2823,7 +2651,7 @@ const handleDrop = async (
 
                               className="tt-edit-btn"
 
-                              onClick={() => handleEdit(entry)}
+                              onClick={() => handleEdit(entry)} disabled={busy}
 
                             >
 
@@ -2839,7 +2667,7 @@ const handleDrop = async (
 
                               className="tt-delete-btn"
 
-                              onClick={() => handleDeleteEntry(entry.TimetableEntryId)}
+                              onClick={() => handleDeleteEntry(entry)} disabled={busy}
 
                             >
 
@@ -2905,13 +2733,13 @@ const handleDrop = async (
 
 
 
-          {viewMode === "class" && (
+          {viewMode === "class" && !baseError && !sessionError && (
 
             <>
 
               <select
 
-                value={campusFilter}
+                aria-label="Filter by campus" value={campusFilter}
 
                 onChange={(event) => setCampusFilter(event.target.value)}
 
@@ -2935,7 +2763,7 @@ const handleDrop = async (
 
               <select
 
-                value={yearFilter}
+                aria-label="Filter by class year" value={yearFilter}
 
                 onChange={(event) => setYearFilter(event.target.value)}
 
@@ -3011,8 +2839,9 @@ const handleDrop = async (
             </div>
 
             <div className="tt-editor-day-picker">
-              <label>Editing Day</label>
+              <label htmlFor="tt-editor-day">Editing Day</label>
               <select
+                id="tt-editor-day"
                 value={editorDay}
                 onChange={(event) => {
                   setEditorDay(Number(event.target.value));
@@ -3121,12 +2950,12 @@ const handleDrop = async (
                                 ]
                                   .filter(Boolean)
                                   .join(" ")}
-                                draggable={!movingEntry && entry.ClassType !== "Common"}
+                                draggable={!busy}
                                 onDragStart={(event) => handleDragStart(event, entry)}
                                 onDragEnd={handleDragEnd}
                                 title={
                                   entry.ClassType === "Common"
-                                    ? "Common lecture cannot be moved individually"
+                                    ? "Move this shared lecture for all sections"
                                     : "Drag this lecture to another period"
                                 }
                               >
@@ -3431,7 +3260,7 @@ const handleDrop = async (
 
 
 
-      {viewMode === "teacher" && (
+      {viewMode === "teacher" && !baseError && !sessionError && (
 
         <div className="tt-print-root">
 

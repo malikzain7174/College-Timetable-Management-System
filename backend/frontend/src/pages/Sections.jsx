@@ -2512,19 +2512,7 @@ function Sections() {
                     </div>
 
 
-                    <div
-                        style={{
-                            display:
-                                "flex",
-
-                            alignItems:
-                                "center",
-
-                            gap:
-                                "10px"
-                        }}
-                    >
-
+                    <div className="section-list-tools">
                         <input
                             type="text"
                             value={
@@ -2536,10 +2524,9 @@ function Sections() {
                                         event.target.value
                                     )
                             }
+                            aria-label="Search sections"
                             placeholder="Search section, campus, program or room..."
                             style={{
-                                minWidth:
-                                    "360px",
 
                                 padding:
                                     "10px 12px",

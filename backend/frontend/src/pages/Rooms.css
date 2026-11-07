@@ -85,7 +85,7 @@
     font-weight: 600;
 }
 
-.room-form-group input {
+.room-form-group :is(input, select) {
     width: 100%;
     box-sizing: border-box;
     padding: 11px 12px;
@@ -95,7 +95,7 @@
     font-size: 14px;
 }
 
-.room-form-group input:focus {
+.room-form-group :is(input, select):focus {
     border-color: #2563eb;
 }
 
