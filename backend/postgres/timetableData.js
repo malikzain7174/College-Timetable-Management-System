@@ -104,4 +104,8 @@ function createTimetableData(pool=getPgPool()) {
   }
   return {listEntries,getSchedulingData};
 }
-module.exports={createTimetableData};
+module.exports={
+  createTimetableData,
+  listEntries:(filter,db)=>createTimetableData().listEntries(filter,db),
+  getSchedulingData:(sessionId,db)=>createTimetableData().getSchedulingData(sessionId,db)
+};
