@@ -53,6 +53,16 @@ The following SQL Server-specific constructs are present in application services
 - These test cases are **committed but have not been executed against the actual dependencies or a live PostgreSQL database**. No Neon credentials were retrieved.
 - Remaining domain CRUD modules include teachers, sections, section subjects, teaching groups, time slots, rules and timetable writes. The `pg` package and matching lockfile are still not installed.
 
+## Time slots port (isolated, 7 November 2026)
+
+- Added `backend/postgres/timeSlotService.js` with list/get, overlap lookup, create/update/delete/deactivate.
+- Returns `HH:mm:ss` for time fields using `to_char` and uses PostgreSQL `$n` parameters for all values.
+- Preserves strict overlap semantics `newStart < oldEnd AND newEnd > oldStart`; exclusion of an existing slot during edits is supported.
+- Added five mock test cases in `backend/test/postgres-timeslot.test.js`.
+- The JavaScript source parsed and a separate mock query exercise verified parameter binding and invalid-range rejection. The committed full test suite and live PostgreSQL DB have NOT been run.
+- **Blocker:** npm registry network access was unavailable in the execution container, so `pg` and its reproducible lockfile have not been installed. Do not activate the PostgreSQL adapter until `npm install pg` updates both manifest and lockfile and `npm ci && npm test` pass in CI.
+- The existing routes still use SQL Server, and `main` is unchanged.
+
 ## Safe implementation order
 
 1. **Draft created, runtime testing pending:** validate `001_initial_schema.sql` on a disposable PostgreSQL branch and correct any parser/constraint errors; keep existing SQL Server scripts unchanged.
