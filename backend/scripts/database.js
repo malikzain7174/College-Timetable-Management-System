@@ -28,6 +28,9 @@ async function migrate() {
 }
 
 async function main([command, username, option]) {
+    if (process.env.DB_PROVIDER === "postgres") {
+        return require("../postgres/migrate").main([command, username, option]);
+    }
     if (command === "migrate") return migrate();
     if (command === "seed") {
         await withDatabaseLock("timetable:migrations", db => runSqlFile(db, "demo-seed.sql"));
