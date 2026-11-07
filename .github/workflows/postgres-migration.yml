@@ -40,6 +40,8 @@ jobs:
       PGDATABASE: timetable_test
       DATABASE_URL: postgresql://timetable_test:test-only-password@localhost:5432/timetable_test?sslmode=disable
       PG_ALLOW_DISPOSABLE_MIGRATION: 'YES'
+      RUN_PG_TESTS: '1'
+      DB_PROVIDER: postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
