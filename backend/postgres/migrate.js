@@ -45,9 +45,10 @@ async function migrate() {
 
 async function main([command,username,option]) {
   try {
-    if(command==="migrate")return migrate();
+    // Await the operation before finally closes the PostgreSQL pool.
+    if(command==="migrate")return await migrate();
     if(command==="admin"&&(!option||option==="--rotate"))
-      return createPostgresAuthService().provisionAdmin(username,process.env.ADMIN_PASSWORD,option==="--rotate");
+      return await createPostgresAuthService().provisionAdmin(username,process.env.ADMIN_PASSWORD,option==="--rotate");
     if(command==="seed")throw new Error("PostgreSQL demo seed is not implemented. Use a disposable test database and integration smoke test.");
     throw new Error("Supported PostgreSQL commands: db:migrate or db:admin -- <username> [--rotate].");
   } finally {
