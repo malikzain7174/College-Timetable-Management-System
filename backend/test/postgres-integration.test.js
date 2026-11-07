@@ -79,6 +79,13 @@ test("PostgreSQL integration: auth, academic CRUD and timetable", { skip: !enabl
     });
     assert.equal(saved.affectedRows, 1);
     assert.equal((await registry.timetableEntryService.getTimetableEntriesBySession(session.AcademicSessionId)).length, 1);
+    const preview = await registry.timetableGeneratorService.generateTimetable({
+      academicSessionId: session.AcademicSessionId,
+      clearExisting: false,
+      previewOnly: true
+    });
+    assert.equal(preview.unscheduledCount, 0);
+
     assert.equal((await registry.conflictService.getConflictSummary(session.AcademicSessionId)).totalEntries, 1);
     const password = "temporary-CI-Admin-Passphrase-2026";
     assert.match(await registry.authService.provisionAdmin("ci-admin", password, false), /created/);
