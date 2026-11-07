@@ -48,7 +48,7 @@ test("successful login creates hashed session in a transaction", async () => {
   });
   const auth = createPostgresAuthService(pool);
   const res = await auth.signIn("admin", password);
-  assert.match(res.token, /^[\\w-]{43}$/);
+  assert.match(res.token, /^[\w-]{43}$/);
   assert.equal(res.user.role, "Admin");
   const insert = pool.history.find(x => x.text.includes('INSERT INTO "UserSessions"'));
   assert.ok(Buffer.isBuffer(insert.values[0]));
