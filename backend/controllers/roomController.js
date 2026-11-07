@@ -1,5 +1,5 @@
 const roomService =
-    require("../services/roomService");
+    (process.env.DB_PROVIDER === "postgres" ? require("../postgres").roomService : require("../services/roomService"));
 
 
 // ======================================================
