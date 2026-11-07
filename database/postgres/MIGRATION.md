@@ -28,9 +28,16 @@ The following SQL Server-specific constructs are present in application services
 - `backend/services/timetableRuleService.js`: `OUTPUT INSERTED`, date defaults and write handling.
 - Other domain services use `OUTPUT INSERTED`, `TOP` and `@parameter` syntax.
 
+## Completed in this branch
+
+- `001_initial_schema.sql` drafted from the original SQL Server schema and auth-session migration.
+- Static repository audit found **20 CREATE TABLE** statements (19 original tables plus UserSessions), **28 foreign keys**, **12 indexes**, **13 named unique constraints**, **12 named CHECK constraints**, and **37 column defaults**.
+- The SQL text has been checked for several unconverted SQL Server-only tokens, but **has not yet been parsed or executed by PostgreSQL**. This is not a successful migration or live Neon deployment.
+- The SQL is for an **empty disposable test database** and should not be applied to the existing Neon production branch until a PostgreSQL runtime migration test succeeds.
+
 ## Safe implementation order
 
-1. Create a **new** PostgreSQL DDL migration preserving all tables, foreign keys, uniqueness constraints, defaults and indexes. Keep existing SQL Server scripts unchanged.
+1. **Draft created, runtime testing pending:** validate `001_initial_schema.sql` on a disposable PostgreSQL branch and correct any parser/constraint errors; keep existing SQL Server scripts unchanged.
 2. Add `pg` dependency with correctly regenerated `package-lock.json` (`npm install pg`); add a PostgreSQL pool, binding, transactions and advisory locks. Do not repurpose `mssql` or use unsafe string substitutions.
 3. Port authentication, migrations, and admin provisioning. Test salted password verification, token hashing, expiries, revocation, privileges and injection resistance.
 4. Port each domain service, using parameterized PostgreSQL queries and PostgreSQL transactions. Preserve scheduling conflict prevention and multi-section assignment behavior.
